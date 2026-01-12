@@ -1,0 +1,133 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+//////////////////////
+// ENUMS
+//////////////////////
+
+enum Role {
+    OWNER
+    ADMIN
+    EMPLOYEE
+    READ_ONLY
+}
+
+enum MovementType {
+    IN // compra / ingreso
+    OUT // venta / egreso
+    ADJUST // ajuste manual
+    TRANSFER // transferencia entre depósitos
+}
+
+//////////////////////
+// CORE
+//////////////////////
+
+model Company {
+    id        String   @id @default(uuid())
+    name      String
+    active    Boolean  @default(true)
+    createdAt DateTime @default(now())
+
+    users      UserCompany[]
+    products   Product[]
+    warehouses Warehouse[]
+    movements  StockMovement[]
+}
+
+model User {
+    id        String   @id @default(uuid())
+    email     String   @unique
+    password  String
+    active    Boolean  @default(true)
+    createdAt DateTime @default(now())
+
+    companies UserCompany[]
+}
+
+model UserCompany {
+    id        String @id @default(uuid())
+    userId    String
+    companyId String
+    role      Role
+
+    user    User    @relation(fields: [userId], references: [id])
+    company Company @relation(fields: [companyId], references: [id])
+
+    @@unique([userId, companyId])
+}
+
+//////////////////////
+// PRODUCTS
+//////////////////////
+
+model Product {
+    id        String   @id @default(uuid())
+    companyId String
+    name      String
+    sku       String?
+    active    Boolean  @default(true)
+    createdAt DateTime @default(now())
+
+    company   Company         @relation(fields: [companyId], references: [id])
+    stocks    Stock[]
+    movements StockMovement[]
+
+    @@unique([companyId, sku])
+    @@index([companyId])
+}
+
+//////////////////////
+// WAREHOUSES
+//////////////////////
+
+model Warehouse {
+    id        String   @id @default(uuid())
+    companyId String
+    name      String
+    active    Boolean  @default(true)
+    createdAt DateTime @default(now())
+
+    company        Company         @relation(fields: [companyId], references: [id])
+    stocks         Stock[]
+    stockMovements StockMovement[]
+}
+
+//////////////////////
+// STOCK
+//////////////////////
+
+model Stock {
+    id          String @id @default(uuid())
+    productId   String
+    warehouseId String
+    quantity    Int    @default(0)
+
+    product   Product   @relation(fields: [productId], references: [id])
+    warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+    @@unique([productId, warehouseId])
+}
+
+//////////////////////
+// STOCK MOVEMENTS
+//////////////////////
+
+model StockMovement {
+    id          String       @id @default(uuid())
+    companyId   String
+    productId   String
+    warehouseId String
+    type        MovementType
+    quantity    Int
+    reference   String?
+    createdAt   DateTime     @default(now())
+
+    company   Company   @relation(fields: [companyId], references: [id])
+    product   Product   @relation(fields: [productId], references: [id])
+    warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+}
