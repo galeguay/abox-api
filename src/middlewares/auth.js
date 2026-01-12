@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import createError from 'http-errors';
 
-const authMiddleware = (req, res, next) => {
+export const authMiddleware = (req, res, next) => {
   const header = req.headers.authorization;
 
   if (!header) {
@@ -22,5 +22,3 @@ const authMiddleware = (req, res, next) => {
     throw createError(401, 'Token inválido o expirado');
   }
 };
-
-export default { authMiddleware };

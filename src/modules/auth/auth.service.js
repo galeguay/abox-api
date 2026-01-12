@@ -1,4 +1,4 @@
-import prisma from '../../prisma/client.js';
+import prisma from '../../../prisma/client.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import createError from 'http-errors';

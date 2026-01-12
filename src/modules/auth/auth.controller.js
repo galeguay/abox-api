@@ -1,8 +1,10 @@
-const authService = require('./auth.service');
+import * as authService from './auth.service.js'; // Importa todas las funciones como un objeto
 
-const login = async (req, res) => {
-  const result = await authService.login(req.body);
-  res.json(result);
+export const login = async (req, res, next) => {
+  try {
+    const result = await authService.login(req.body); 
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
 };
-
-module.exports = { login };
