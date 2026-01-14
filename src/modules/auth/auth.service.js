@@ -50,3 +50,27 @@ export const login = async ({ email, password, companyId }) => {
     }
   };
 };
+
+export const register = async ({ email, password }) => {
+  if (!email || !password) {
+    throw createError(400, 'Datos incompletos');
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existing) {
+    throw createError(400, 'El email ya está registrado');
+  }
+
+  const hashed = await bcrypt.hash(password, 10);
+
+  const newUser = await prisma.user.create({
+    data: {
+      email,
+      password: hashed,
+      active: true
+    },
+    select: { id: true, email: true }
+  });
+
+  return newUser;
+};
