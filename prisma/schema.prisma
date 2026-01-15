@@ -6,13 +6,6 @@ datasource db {
     provider = "postgresql"
 }
 
-enum Role {
-    OWNER
-    ADMIN
-    EMPLOYEE
-    READ_ONLY
-}
-
 enum MovementType {
     IN // compra / ingreso
     OUT // venta / egreso
@@ -26,21 +19,30 @@ model Company {
     active    Boolean  @default(true)
     createdAt DateTime @default(now())
 
-    users           UserCompany[]
-    products        Product[]
-    warehouses      Warehouse[]
-    movements       StockMovement[]
-    moneyMovements  MoneyMovement[]
-    moneyCategories MoneyCategory[]
-    cashSessions    CashSession[]
-    productCosts    ProductCost[]
-    deliveryZones   DeliveryZone[]
-    customers       Customer[]
-    sales           Sale[]
-    orders          Order[]
-    suppliers       Supplier[]
-    purchases       Purchase[]
-    promotions      Promotion[]
+    users              UserCompany[]
+    products           Product[]
+    warehouses         Warehouse[]
+    movements          StockMovement[]
+    moneyMovements     MoneyMovement[]
+    moneyCategories    MoneyCategory[]
+    cashSessions       CashSession[]
+    productCosts       ProductCost[]
+    deliveryZones      DeliveryZone[]
+    customers          Customer[]
+    sales              Sale[]
+    orders             Order[]
+    suppliers          Supplier[]
+    purchases          Purchase[]
+    promotions         Promotion[]
+    productCategories  ProductCategory[]
+    productNoRotations ProductNoRotation[]
+    modifierGroups     ModifierGroup[]
+    cashDailies        CashDaily[]
+    companyModules     CompanyModule[]
+    salesDailies       SalesDaily[]
+    profitByProducts   ProfitByProduct[]
+    salesByProducts    SalesByProduct[]
+    salesByCategories  SalesByCategory[]
 }
 
 model User {
@@ -87,7 +89,14 @@ model Product {
     components    ProductComponent[] @relation("ProductParent")
     usedIn        ProductComponent[] @relation("ProductComponent")
     company       Company            @relation(fields: [companyId], references: [id])
-    promotions    PromotionItem[]
+
+    promotions            PromotionItem[]
+    productNoRotations    ProductNoRotation[]
+    productModifierGroups ProductModifierGroup[]
+    profitByProducts      ProfitByProduct[]
+    salesByProducts       SalesByProduct[]
+    productCategory       ProductCategory?       @relation(fields: [productCategoryId], references: [id])
+    productCategoryId     String?
 
     @@unique([companyId, sku])
     @@index([companyId])
@@ -187,6 +196,8 @@ model MoneyCategory {
     moneyMovements MoneyMovement[]
 
     company Company @relation(fields: [companyId], references: [id])
+
+    @@index([companyId])
 }
 
 enum MoneyReferenceType {
@@ -216,7 +227,8 @@ model MoneyMovement {
     @@index([createdAt])
     @@index([companyId, createdAt])
     @@index([companyId, createdAt, type])
-  @@index([companyId, paymentMethod, createdAt])
+    @@index([companyId, paymentMethod, createdAt])
+    @@index([companyId, categoryId, createdAt])
 }
 
 model CashSession {
@@ -232,6 +244,8 @@ model CashSession {
 
     company  Company @relation(fields: [companyId], references: [id])
     openedBy User    @relation(fields: [openedById], references: [id])
+
+    @@index([companyId, openedAt])
 }
 
 model CashDenomination {
@@ -294,6 +308,7 @@ model Sale {
 
     @@index([createdAt])
     @@index([companyId, createdAt])
+    @@index([companyId, paymentStatus, createdAt])
 }
 
 model SaleItem {
@@ -306,8 +321,9 @@ model SaleItem {
     discount  Decimal?
     cost      Decimal
 
-    sale    Sale    @relation(fields: [saleId], references: [id])
-    product Product @relation(fields: [productId], references: [id])
+    modifiers SaleItemModifier[]
+    sale      Sale               @relation(fields: [saleId], references: [id])
+    product   Product            @relation(fields: [productId], references: [id])
 
     @@index([productId])
 }
@@ -321,6 +337,7 @@ model SalePayment {
     reference     String?
 
     sale Sale @relation(fields: [saleId], references: [id])
+    @@index([paymentMethod, createdAt])
 }
 
 model Customer {
@@ -372,6 +389,7 @@ model Order {
     @@index([createdAt])
     @@index([companyId, createdAt])
     @@index([companyId, status, createdAt])
+    @@index([companyId, paymentStatus, createdAt])
 }
 
 model OrderItem {
@@ -399,6 +417,8 @@ model OrderPayment {
     reference     String?
 
     order Order @relation(fields: [orderId], references: [id])
+
+    @@index([paymentMethod, createdAt])
 }
 
 enum PaymentStatus {
@@ -415,6 +435,8 @@ model Supplier {
 
     purchases Purchase[]
     company   Company    @relation(fields: [companyId], references: [id])
+
+    @@index([companyId, active])
 }
 
 enum PurchaseStatus {
@@ -443,7 +465,7 @@ model Purchase {
     payments PurchasePayment[]
 
     @@index([companyId, createdAt])
-    @@index([supplierId])
+    @@index([companyId, supplierId, createdAt])
 }
 
 model PurchaseItem {
@@ -491,6 +513,9 @@ model Promotion {
 
     company Company         @relation(fields: [companyId], references: [id])
     items   PromotionItem[]
+
+    @@index([companyId, active])
+    @@index([companyId, startDate, endDate])
 }
 
 model PromotionItem {
@@ -504,4 +529,213 @@ model PromotionItem {
     product   Product   @relation(fields: [productId], references: [id])
 
     @@unique([promotionId, productId])
+}
+
+model Permission {
+    id          String   @id @default(uuid())
+    name        String   @unique
+    description String?
+    moduleId    String
+    createdAt   DateTime @default(now())
+
+    module          Module           @relation(fields: [moduleId], references: [id])
+    rolePermissions RolePermission[]
+
+    @@index([moduleId])
+}
+
+// Relación entre roles y permisos
+model RolePermission {
+    id           String @id @default(uuid())
+    role         Role
+    permissionId String
+
+    permission Permission @relation(fields: [permissionId], references: [id])
+
+    @@unique([role, permissionId])
+}
+
+// Ejemplo de roles existentes en tu UserCompany
+enum Role {
+    OWNER
+    ADMIN
+    EMPLOYEE
+    READ_ONLY
+}
+
+model Module {
+    id          String  @id @default(uuid())
+    code        String  @unique
+    name        String
+    description String?
+    active      Boolean @default(true)
+
+    companies   CompanyModule[]
+    permissions Permission[]
+
+    @@index([active])
+}
+
+model CompanyModule {
+    id        String    @id @default(uuid())
+    companyId String
+    moduleId  String
+    enabled   Boolean   @default(true)
+    expiresAt DateTime?
+
+    company Company @relation(fields: [companyId], references: [id])
+    module  Module  @relation(fields: [moduleId], references: [id])
+
+    @@unique([companyId, moduleId])
+}
+
+model SalesDaily {
+    id         String   @id @default(uuid())
+    companyId  String
+    date       DateTime
+    totalSales Decimal
+    salesCount Int
+    avgTicket  Decimal
+
+    company Company @relation(fields: [companyId], references: [id])
+
+    @@unique([companyId, date])
+    @@index([companyId, date])
+}
+
+model SalesByProduct {
+    id          String  @id @default(uuid())
+    companyId   String
+    productId   String
+    unitsSold   Decimal
+    totalAmount Decimal
+
+    company Company @relation(fields: [companyId], references: [id])
+    product Product @relation(fields: [productId], references: [id])
+
+    @@unique([companyId, productId])
+    @@index([companyId])
+}
+
+model ProfitByProduct {
+    id        String  @id @default(uuid())
+    companyId String
+    productId String
+    revenue   Decimal
+    cost      Decimal
+    profit    Decimal
+
+    company Company @relation(fields: [companyId], references: [id])
+    product Product @relation(fields: [productId], references: [id])
+
+    @@unique([companyId, productId])
+    @@index([companyId])
+}
+
+model CashDaily {
+    id        String   @id @default(uuid())
+    companyId String
+    date      DateTime
+    cashIn    Decimal
+    cashOut   Decimal
+    balance   Decimal
+
+    company Company @relation(fields: [companyId], references: [id])
+
+    @@unique([companyId, date])
+    @@index([companyId, date])
+}
+
+model ProductNoRotation {
+    id        String    @id @default(uuid())
+    companyId String
+    productId String
+    lastSale  DateTime?
+    daysIdle  Int
+
+    company Company @relation(fields: [companyId], references: [id])
+    product Product @relation(fields: [productId], references: [id])
+
+    @@unique([companyId, productId])
+}
+
+model SalesByCategory {
+    id         String  @id @default(uuid())
+    companyId  String
+    categoryId String
+    totalSales Decimal
+    unitsSold  Decimal
+
+    company  Company         @relation(fields: [companyId], references: [id])
+    category ProductCategory @relation(fields: [categoryId], references: [id])
+
+    @@unique([companyId, categoryId])
+    @@index([companyId])
+}
+
+model ProductCategory {
+    id        String   @id @default(uuid())
+    companyId String
+    name      String
+    createdAt DateTime @default(now())
+
+    company           Company           @relation(fields: [companyId], references: [id])
+    products          Product[]
+    salesByCategories SalesByCategory[]
+
+    @@unique([companyId, name])
+    @@index([companyId])
+}
+
+model ModifierGroup {
+    id        String   @id @default(uuid())
+    companyId String
+    name      String
+    required  Boolean  @default(false)
+    min       Int?
+    max       Int?
+    createdAt DateTime @default(now())
+
+    company   Company                @relation(fields: [companyId], references: [id])
+    modifiers Modifier[]
+    products  ProductModifierGroup[]
+
+    @@index([companyId])
+}
+
+model Modifier {
+    id      String  @id @default(uuid())
+    groupId String
+    name    String
+    price   Decimal @default(0)
+    active  Boolean @default(true)
+
+    salesItems SaleItemModifier[]
+
+    group ModifierGroup @relation(fields: [groupId], references: [id])
+
+    @@index([groupId, active])
+}
+
+model ProductModifierGroup {
+    id        String @id @default(uuid())
+    productId String
+    groupId   String
+
+    product Product       @relation(fields: [productId], references: [id])
+    group   ModifierGroup @relation(fields: [groupId], references: [id])
+
+    @@unique([productId, groupId])
+}
+
+model SaleItemModifier {
+    id         String  @id @default(uuid())
+    saleItemId String
+    modifierId String
+    price      Decimal
+
+    saleItem SaleItem @relation(fields: [saleItemId], references: [id])
+    modifier Modifier @relation(fields: [modifierId], references: [id])
+
+    @@unique([saleItemId, modifierId])
 }

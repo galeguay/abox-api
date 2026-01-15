@@ -1,0 +1,183 @@
+// ==============================
+// PRODUCTOS / STOCK
+// ==============================
+export const PRODUCT_VIEW = 'PRODUCT_VIEW';
+export const PRODUCT_CREATE = 'PRODUCT_CREATE';
+export const PRODUCT_UPDATE = 'PRODUCT_UPDATE';
+export const PRODUCT_DELETE = 'PRODUCT_DELETE';
+
+export const STOCK_VIEW = 'STOCK_VIEW';
+export const STOCK_MOVE = 'STOCK_MOVE';
+export const STOCK_ADJUST = 'STOCK_ADJUST';
+export const STOCK_TRANSFER = 'STOCK_TRANSFER';
+
+// ==============================
+// DEPÓSITOS
+// ==============================
+export const WAREHOUSE_VIEW = 'WAREHOUSE_VIEW';
+export const WAREHOUSE_CREATE = 'WAREHOUSE_CREATE';
+export const WAREHOUSE_UPDATE = 'WAREHOUSE_UPDATE';
+export const WAREHOUSE_DISABLE = 'WAREHOUSE_DISABLE';
+
+// ==============================
+// VENTAS / POS
+// ==============================
+export const SALE_CREATE = 'SALE_CREATE';
+export const SALE_VIEW = 'SALE_VIEW';
+export const SALE_CANCEL = 'SALE_CANCEL';
+export const SALE_REFUND = 'SALE_REFUND';
+
+export const PAYMENT_REGISTER = 'PAYMENT_REGISTER';
+export const PAYMENT_VIEW = 'PAYMENT_VIEW';
+
+// ==============================
+// CAJA
+// ==============================
+export const CASH_SESSION_OPEN = 'CASH_SESSION_OPEN';
+export const CASH_SESSION_CLOSE = 'CASH_SESSION_CLOSE';
+export const CASH_SESSION_VIEW = 'CASH_SESSION_VIEW';
+export const CASH_DIFFERENCE_ADJUST = 'CASH_DIFFERENCE_ADJUST';
+
+// ==============================
+// COMPRAS / PROVEEDORES
+// ==============================
+export const SUPPLIER_VIEW = 'SUPPLIER_VIEW';
+export const SUPPLIER_CREATE = 'SUPPLIER_CREATE';
+export const SUPPLIER_UPDATE = 'SUPPLIER_UPDATE';
+
+export const PURCHASE_CREATE = 'PURCHASE_CREATE';
+export const PURCHASE_VIEW = 'PURCHASE_VIEW';
+export const PURCHASE_CONFIRM = 'PURCHASE_CONFIRM';
+export const PURCHASE_RECEIVE = 'PURCHASE_RECEIVE';
+export const PURCHASE_CANCEL = 'PURCHASE_CANCEL';
+export const PURCHASE_PAYMENT_REGISTER = 'PURCHASE_PAYMENT_REGISTER';
+
+// ==============================
+// CLIENTES
+// ==============================
+export const CUSTOMER_VIEW = 'CUSTOMER_VIEW';
+export const CUSTOMER_CREATE = 'CUSTOMER_CREATE';
+export const CUSTOMER_UPDATE = 'CUSTOMER_UPDATE';
+export const CUSTOMER_DISABLE = 'CUSTOMER_DISABLE';
+
+// ==============================
+// PEDIDOS / DELIVERY
+// ==============================
+export const ORDER_CREATE = 'ORDER_CREATE';
+export const ORDER_VIEW = 'ORDER_VIEW';
+export const ORDER_UPDATE_STATUS = 'ORDER_UPDATE_STATUS';
+export const ORDER_CANCEL = 'ORDER_CANCEL';
+
+export const DELIVERY_ZONE_VIEW = 'DELIVERY_ZONE_VIEW';
+export const DELIVERY_ZONE_CREATE = 'DELIVERY_ZONE_CREATE';
+export const DELIVERY_ZONE_UPDATE = 'DELIVERY_ZONE_UPDATE';
+
+// ==============================
+// DINERO / CONTABILIDAD
+// ==============================
+export const MONEY_MOVEMENT_VIEW = 'MONEY_MOVEMENT_VIEW';
+export const MONEY_MOVEMENT_CREATE = 'MONEY_MOVEMENT_CREATE';
+export const MONEY_CATEGORY_MANAGE = 'MONEY_CATEGORY_MANAGE';
+
+// ==============================
+// PROMOCIONES
+// ==============================
+export const PROMOTION_VIEW = 'PROMOTION_VIEW';
+export const PROMOTION_CREATE = 'PROMOTION_CREATE';
+export const PROMOTION_UPDATE = 'PROMOTION_UPDATE';
+export const PROMOTION_DISABLE = 'PROMOTION_DISABLE';
+
+// ==============================
+// REPORTES
+// ==============================
+export const REPORT_SALES_VIEW = 'REPORT_SALES_VIEW';
+export const REPORT_STOCK_VIEW = 'REPORT_STOCK_VIEW';
+export const REPORT_CASH_VIEW = 'REPORT_CASH_VIEW';
+export const REPORT_PROFIT_VIEW = 'REPORT_PROFIT_VIEW';
+
+// ==============================
+// USUARIOS / SEGURIDAD
+// ==============================
+export const USER_INVITE = 'USER_INVITE';
+export const USER_ROLE_ASSIGN = 'USER_ROLE_ASSIGN';
+export const USER_DISABLE = 'USER_DISABLE';
+
+export const PERMISSION_MANAGE = 'PERMISSION_MANAGE';
+export const COMPANY_SETTINGS_UPDATE = 'COMPANY_SETTINGS_UPDATE';
+
+// ==============================
+// LISTA COMPLETA (para seed)
+// ==============================
+export const ALL_PERMISSIONS = [
+  PRODUCT_VIEW,
+  PRODUCT_CREATE,
+  PRODUCT_UPDATE,
+  PRODUCT_DELETE,
+
+  STOCK_VIEW,
+  STOCK_MOVE,
+  STOCK_ADJUST,
+  STOCK_TRANSFER,
+
+  WAREHOUSE_VIEW,
+  WAREHOUSE_CREATE,
+  WAREHOUSE_UPDATE,
+  WAREHOUSE_DISABLE,
+
+  SALE_CREATE,
+  SALE_VIEW,
+  SALE_CANCEL,
+  SALE_REFUND,
+  PAYMENT_REGISTER,
+  PAYMENT_VIEW,
+
+  CASH_SESSION_OPEN,
+  CASH_SESSION_CLOSE,
+  CASH_SESSION_VIEW,
+  CASH_DIFFERENCE_ADJUST,
+
+  SUPPLIER_VIEW,
+  SUPPLIER_CREATE,
+  SUPPLIER_UPDATE,
+
+  PURCHASE_CREATE,
+  PURCHASE_VIEW,
+  PURCHASE_CONFIRM,
+  PURCHASE_RECEIVE,
+  PURCHASE_CANCEL,
+  PURCHASE_PAYMENT_REGISTER,
+
+  CUSTOMER_VIEW,
+  CUSTOMER_CREATE,
+  CUSTOMER_UPDATE,
+  CUSTOMER_DISABLE,
+
+  ORDER_CREATE,
+  ORDER_VIEW,
+  ORDER_UPDATE_STATUS,
+  ORDER_CANCEL,
+
+  DELIVERY_ZONE_VIEW,
+  DELIVERY_ZONE_CREATE,
+  DELIVERY_ZONE_UPDATE,
+
+  MONEY_MOVEMENT_VIEW,
+  MONEY_MOVEMENT_CREATE,
+  MONEY_CATEGORY_MANAGE,
+
+  PROMOTION_VIEW,
+  PROMOTION_CREATE,
+  PROMOTION_UPDATE,
+  PROMOTION_DISABLE,
+
+  REPORT_SALES_VIEW,
+  REPORT_STOCK_VIEW,
+  REPORT_CASH_VIEW,
+  REPORT_PROFIT_VIEW,
+
+  USER_INVITE,
+  USER_ROLE_ASSIGN,
+  USER_DISABLE,
+  PERMISSION_MANAGE,
+  COMPANY_SETTINGS_UPDATE
+];
