@@ -1,37 +1,30 @@
 import { body } from 'express-validator';
 
-// Validaciones para crear usuario
-export const createUserValidator = [
-    body('email')
-        .isEmail()
-        .withMessage('Email inválido'),
-
-    body('password')
-        .isLength({ min: 6 })
-        .withMessage('Password mínimo 6 caracteres')
+export const updateMeValidator = [
+  body('email')
+    .optional()
+    .isEmail()
+    .withMessage('Email inválido'),
 ];
 
-// Validaciones para agregar usuario a empresa
-export const addUserToCompanyValidator = [
-    body('userId')
-        .isUUID()
-        .withMessage('userId inválido'),
+export const changePasswordValidator = [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('La contraseña actual es obligatoria'),
 
-    body('companyId')
-        .isUUID()
-        .withMessage('companyId inválido'),
-
-    body('role')
-        .isIn(['OWNER', 'ADMIN'])
-        .withMessage('Rol inválido')
+  body('newPassword')
+    .isLength({ min: 6 })
+    .withMessage('La nueva contraseña debe tener al menos 6 caracteres'),
 ];
 
-export const updateRoleValidator = [
-    body('userId')
-        .isUUID()
-        .withMessage('userId debe ser un UUID válido'),
-
-    body('role')
-        .isIn(['OWNER', 'ADMIN'])
-        .withMessage('El rol proporcionado no es válido')
+export const updateUserValidator = [
+  body('email')
+    .optional()
+    .isEmail()
+    .withMessage('Email inválido'),
+    
+  body('active')
+    .optional()
+    .isBoolean()
+    .withMessage('El campo active debe ser un booleano'),
 ];

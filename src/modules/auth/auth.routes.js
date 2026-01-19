@@ -1,14 +1,61 @@
 import { Router } from 'express';
-import { login, register } from './auth.controller.js';
-import { createUserValidator } from '../users/users.validator.js';
 import validateFields from '../../middlewares/validateFields.js';
+import { emailUniqueOnCreate } from '../../middlewares/emailUnique.js';
+
+import {
+    login,
+    register,
+    refreshToken,
+    logout,
+    forgotPassword,
+    resetPassword,
+} from './auth.controller.js';
+
+import {
+    loginValidator,
+    registerValidator,
+    forgotPasswordValidator,
+    resetPasswordValidator,
+} from './auth.validator.js';
 
 const router = Router();
 
-// Registro público de usuario
-router.post('/register', createUserValidator, validateFields, register);
+// Registro (identidad básica)
+router.post(
+    '/register',
+    registerValidator,
+    validateFields,
+    emailUniqueOnCreate(),
+    register
+);
 
-router.post('/login', login);
+// Login
+router.post(
+    '/login',
+    loginValidator,
+    validateFields,
+    login
+);
+
+// Refresh token
+router.post('/refresh', refreshToken);
+
+// Logout
+router.post('/logout', logout);
+
+// Recuperación de contraseña
+router.post(
+    '/forgot-password',
+    forgotPasswordValidator,
+    validateFields,
+    forgotPassword
+);
+
+router.post(
+    '/reset-password',
+    resetPasswordValidator,
+    validateFields,
+    resetPassword
+);
 
 export default router;
-

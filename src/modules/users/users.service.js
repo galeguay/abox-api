@@ -1,75 +1,86 @@
-import prisma from '../../../prisma/client.js';
-import createError from 'http-errors';
+import { prisma } from '../../lib/prisma.js';
 import bcrypt from 'bcryptjs';
+import { NotFoundError, BadRequestError } from '../../errors/index.js';
 
-const createAndAssignUser = async (userData, companyId) => {
-  const { email, password, role } = userData;
+const USER_SELECT = {
+  id: true,
+  email: true,
+  active: true,
+  createdAt: true,
+};
 
-  const existingUser = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true }
+
+const getById = async (id) => {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: USER_SELECT,
   });
 
-  if (existingUser) {
-    throw createError(400, 'El email ya está registrado');
+  if (!user) {
+    throw NotFoundError('Usuario no encontrado');
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  return user;
+};
 
-  // Transacción atómica: se crea el usuario y se une a la empresa o no se hace nada 
-  return await prisma.$transaction(async (tx) => {
-    const newUser = await tx.user.create({
-      data: {
-        email,
-        password: hashedPassword
-      }
-    });
-
-    const membership = await tx.userCompany.create({
-      data: {
-        userId: newUser.id,
-        companyId: companyId,
-        role: role // Basado en el Enum Role 
-      }
-    });
-
-    return { user: newUser, role: membership.role };
+const getAll = async () => {
+  return prisma.user.findMany({
+    select: USER_SELECT,
+    orderBy: { createdAt: 'desc' },
   });
 };
 
-const getCompanyMembers = async (companyId) => {
-  return await prisma.userCompany.findMany({
-    where: { companyId },
-    include: {
-      user: {
-        select: { id: true, email: true, active: true }
-      }
-    },
-    orderBy: { user: { email: 'asc' } }
+
+const updateUser = async (id, data) => {
+  const payload = {};
+
+  if (data.email) payload.email = data.email;
+  if (typeof data.active === 'boolean') payload.active = data.active;
+
+  return prisma.user.update({
+    where: { id },
+    data: payload,
+    select: USER_SELECT,
   });
 };
 
-const updateMemberRole = async (companyId, userId, newRole) => {
-  // Usamos el ID compuesto generado por Prisma para la relación 
-  return await prisma.userCompany.update({
-    where: {
-      userId_companyId: { userId, companyId }
-    },
-    data: { role: newRole }
+
+const changePassword = async (id, currentPassword, newPassword) => {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { password: true },
+  });
+
+if (!user) {
+  throw NotFoundError('Usuario no encontrado');
+}
+
+
+  const ok = await bcrypt.compare(currentPassword, user.password);
+  if (!ok) {
+    throw BadRequestError('Contraseña actual incorrecta');
+  }
+
+  const hash = await bcrypt.hash(newPassword, 10);
+
+  await prisma.user.update({
+    where: { id },
+    data: { password: hash },
   });
 };
 
-const removeMember = async (companyId, userId) => {
-  return await prisma.userCompany.delete({
-    where: {
-      userId_companyId: { userId, companyId }
-    }
+const setActive = async (id, active) => {
+  await prisma.user.update({
+    where: { id },
+    data: { active },
   });
 };
+
 
 export default {
-  createAndAssignUser,
-  getCompanyMembers,
-  updateMemberRole,
-  removeMember
+  getById,
+  getAll,
+  updateUser,
+  changePassword,
+  setActive,
 };

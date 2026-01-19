@@ -1,49 +1,80 @@
 import { Router } from 'express';
-import {
-  createAndAssignUser,
-  getCompanyUsers,
-  updateRole,
-  deleteMember 
-} from './users.controller.js';
-
 import { authMiddleware } from '../../middlewares/auth.js';
 import requireRole from '../../middlewares/requireRole.js';
 import validateFields from '../../middlewares/validateFields.js';
-import { createUserValidator, updateRoleValidator } from './users.validator.js';
+import { emailUniqueOnUpdate } from '../../middlewares/emailUnique.js';
 
+import {
+  getMe,
+  updateMe,
+  changePassword,
+  activateUser,
+  deactivateUser,
+  getUsers,
+  getUserById,
+  updateUser,
+} from './users.controller.js';
+
+import {
+  updateMeValidator,
+  changePasswordValidator,
+  updateUserValidator,
+} from './users.validator.js';
 
 const router = Router();
 router.use(authMiddleware);
+router.get('/me', getMe);
 
-// Crear y asignar usuario
-router.post(
-  '/',
-  requireRole(['OWNER', 'ADMIN']),
-  createUserValidator,
+router.put(
+  '/me',
+  updateMeValidator,
   validateFields,
-  createAndAssignUser
+  emailUniqueOnUpdate({
+    getUserId: (req) => req.user.id,
+  }),
+  updateMe
 );
 
-// Listar usuarios
+router.put(
+  '/me/password',
+  changePasswordValidator,
+  validateFields,
+  changePassword
+);
+
 router.get(
-  '/company',
-  requireRole(['OWNER', 'ADMIN']),
-  getCompanyUsers
+  '/',
+  requireRole(['OWNER']),
+  getUsers
 );
 
-// Actualizar rol
+router.get(
+  '/:id',
+  requireRole(['OWNER', 'ADMIN']),
+  getUserById
+);
+
+router.put(
+  '/:id',
+  requireRole(['OWNER', 'ADMIN']),
+  updateUserValidator,
+  validateFields,
+  emailUniqueOnUpdate({
+    getUserId: (req) => req.params.id,
+  }),
+  updateUser
+);
+
 router.patch(
-  '/company/role',
-  requireRole(['OWNER', 'ADMIN']),
-  updateRoleValidator,
-  updateRole
+  '/:id/activate',
+  requireRole(['OWNER']),
+  activateUser
 );
 
-// Remover usuario
-router.delete(
-  '/company/:userId',
-  requireRole(['OWNER', 'ADMIN']),
-  deleteMember
+router.patch(
+  '/:id/deactivate',
+  requireRole(['OWNER']),
+  deactivateUser
 );
 
 export default router;

@@ -3,18 +3,27 @@ import prisma from '../../prisma/client.js';
 
 const requireRole = (allowedRoles = []) => {
   return async (req, res, next) => {
-    const userId = req.userId;
+
+    // Usuarios de plataforma pasan sin validar roles
+    if (req.user?.type === 'PLATFORM') {
+      return next();
+    }
+
+    const userId = req.user?.id;
     const companyId = req.companyId;
 
     if (!userId || !companyId) {
       throw createError(401, 'Contexto inválido');
     }
 
-    const membership = await prisma.userCompany.findFirst({
+    const membership = await prisma.userCompany.findUnique({
       where: {
-        userId,
-        companyId
-      }
+        userId_companyId: {
+          userId,
+          companyId
+        }
+      },
+      select: { role: true }
     });
 
     if (!membership) {
@@ -25,7 +34,9 @@ const requireRole = (allowedRoles = []) => {
       throw createError(403, 'Permisos insuficientes');
     }
 
-    req.role = membership.role;
+    // Rol disponible para el resto del request
+    req.user.role = membership.role;
+
     next();
   };
 };
