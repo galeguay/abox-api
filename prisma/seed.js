@@ -3,46 +3,43 @@ import { ALL_PERMISSIONS } from '../config/permissions.js';
 import bcrypt from 'bcryptjs';
 
 async function main() {
-  // Crear módulos primero
-  const modules = [
-    { code: 'STOCK', name: 'Stock' },
-    { code: 'WAREHOUSES', name: 'Depósitos' },
-    { code: 'SALES', name: 'Ventas' },
-    { code: 'CASH', name: 'Caja' },
-    { code: 'PURCHASES', name: 'Compras' },
-    { code: 'CUSTOMERS', name: 'Clientes' },
-    { code: 'ORDERS', name: 'Pedidos' },
-    { code: 'MONEY', name: 'Dinero' },
-    { code: 'PROMOTIONS', name: 'Promociones' },
-    { code: 'REPORTS', name: 'Reportes' },
-    { code: 'USERS', name: 'Usuarios' },
+  // 1. Definir los módulos con sus respectivos prefijos de permisos
+  const modulesConfig = [
+    { code: 'STOCK', name: 'Gestión de Inventario', prefix: ['PRODUCT_', 'STOCK_', 'WAREHOUSE_'] },
+    { code: 'SALES', name: 'Ventas y POS', prefix: ['SALE_', 'PAYMENT_', 'CASH_'] },
+    { code: 'PURCHASES', name: 'Compras y Proveedores', prefix: ['SUPPLIER_', 'PURCHASE_'] },
+    { code: 'CUSTOMERS', name: 'Clientes', prefix: ['CUSTOMER_'] },
+    { code: 'DELIVERY', name: 'Pedidos y Delivery', prefix: ['ORDER_', 'DELIVERY_'] },
+    { code: 'FINANCE', name: 'Contabilidad', prefix: ['MONEY_'] },
+    { code: 'REPORTS', name: 'Reportes e Indicadores', prefix: ['REPORT_'] },
+    { code: 'ADMIN', name: 'Configuración y Seguridad', prefix: ['USER_', 'PERMISSION_', 'COMPANY_'] },
   ];
 
-  for (const module of modules) {
-    await prisma.module.upsert({
-      where: { code: module.code },
-      update: {},
-      create: module,
+  for (const item of modulesConfig) {
+    // Crear o actualizar el módulo
+    const module = await prisma.module.upsert({
+      where: { code: item.code },
+      update: { name: item.name },
+      create: { code: item.code, name: item.name },
     });
-  }
-  console.log('✅ Módulos creados');
 
-  // Obtener el módulo por defecto para asignar permisos
-  const defaultModule = await prisma.module.findFirst({
-    where: { code: 'PRODUCTS' }
-  });
+    // Filtrar permisos que pertenecen a este módulo según el prefijo
+    const modulePermissions = ALL_PERMISSIONS.filter(perm => 
+      item.prefix.some(p => perm.startsWith(p))
+    );
 
-  if (defaultModule) {
+    // Crear los permisos vinculados a este módulo
     await prisma.permission.createMany({
-      data: ALL_PERMISSIONS.map(name => ({ 
+      data: modulePermissions.map(name => ({
         name,
-        moduleId: defaultModule.id
+        moduleId: module.id
       })),
       skipDuplicates: true
     });
-    console.log('✅ Permisos creados');
-  }
 
+    console.log(`✅ Módulo ${item.code} y sus ${modulePermissions.length} permisos creados.`);
+  }
+  
   const platformEmail = 'admin@platform.com';
 
   const exists = await prisma.user.findUnique({
