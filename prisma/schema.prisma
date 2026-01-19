@@ -7,10 +7,10 @@ datasource db {
 }
 
 enum MovementType {
-    IN // compra / ingreso
-    OUT // venta / egreso
-    ADJUST // ajuste manual
-    TRANSFER // transferencia entre depósitos
+    IN
+    OUT
+    ADJUST
+    TRANSFER
 }
 
 model Company {
@@ -45,11 +45,17 @@ model Company {
     salesByCategories  SalesByCategory[]
 }
 
+enum UserType {
+  COMPANY
+  PLATFORM
+}
+
 model User {
     id        String   @id @default(uuid())
     email     String   @unique
     password  String
     active    Boolean  @default(true)
+    type      UserType @default(COMPANY)
     createdAt DateTime @default(now())
 
     cashSessions   CashSession[]
@@ -59,6 +65,7 @@ model User {
     stockMovements StockMovement[]
     moneyMovements MoneyMovement[]
 }
+
 
 model UserCompany {
     id        String @id @default(uuid())

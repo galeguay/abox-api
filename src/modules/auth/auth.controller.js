@@ -1,19 +1,12 @@
-import * as authService from './auth.service.js'; // Importa todas las funciones como un objeto
+import * as authService from './auth.service.js';
+import asyncWrapper from '../../middlewares/asyncWrapper.js';
 
-export const login = async (req, res, next) => {
-  try {
-    const result = await authService.login(req.body); 
-    res.json(result);
-  } catch (error) {
-    next(error);
-  }
-};
+export const login = asyncWrapper(async (req, res) => {
+  const result = await authService.login(req.body); 
+  res.json({ ok: true, data: result });
+});
 
-export const register = async (req, res, next) => {
-  try {
-    const result = await authService.register(req.body);
-    res.status(201).json({ ok: true, data: result });
-  } catch (error) {
-    next(error);
-  }
-};
+export const register = asyncWrapper(async (req, res) => {
+  const result = await authService.register(req.body);
+  res.status(201).json({ ok: true, data: result });
+});
