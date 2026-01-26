@@ -112,10 +112,15 @@ describe('Orders Service', () => {
             const mockOrder = createMockOrder({
                 id: orderId,
                 status: 'PENDING',
-                items: [{ productId: 'prod-1', quantity: 5 }]
+                items: [{
+                    productId: 'prod-1',
+                    quantity: 5,
+                    product: { name: 'Producto de Prueba' }
+                }]
             });
 
             mockPrisma.order.findFirst.mockResolvedValue(mockOrder);
+            mockPrisma.stock.findUnique.mockResolvedValue({ quantity: 10 });
             mockPrisma.order.update.mockResolvedValue({ ...mockOrder, status: 'CONFIRMED' });
 
             await ordersService.updateOrderStatus(mockCompanyId, orderId, 'CONFIRMED', mockUserId);

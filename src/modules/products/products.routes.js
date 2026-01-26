@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import authMiddleware from '../../middlewares/auth.js';
+import { authMiddleware } from '../../middlewares/auth.js';
 import requireRole from '../../middlewares/requireRole.js';
 import validateFields from '../../middlewares/validateFields.js';
 import { auditMiddleware } from '../../middlewares/auditMiddleware.js';

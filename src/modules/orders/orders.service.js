@@ -225,6 +225,28 @@ const confirmOrder = async (tx, companyId, orderId, userId) => {
     if (!order) throw new AppError('Orden no encontrada', 404);
     if (order.status !== 'PENDING') throw new AppError('Solo órdenes pendientes pueden confirmarse', 409);
 
+    for (const item of order.items) {
+        const currentStock = await tx.stock.findUnique({
+            where: {
+                productId_warehouseId: {
+                    productId: item.productId,
+                    warehouseId: order.warehouseId
+                }
+            }
+        });
+
+        const stockAvailable = currentStock ? parseFloat(currentStock.quantity) : 0;
+        const required = parseFloat(item.quantity);
+
+        if (stockAvailable < required) {
+            throw new AppError(
+                `Stock insuficiente para confirmar: ${item.product?.name || 'Producto desconocido'}. ` +
+                `Disponible: ${stockAvailable}, Requerido: ${required}`,
+                409
+            );
+        }
+    }
+
     const stockItems = order.items.map(i => ({
         productId: i.productId,
         quantity: i.quantity

@@ -1,7 +1,7 @@
 import express from 'express';
 import * as companyController from './company.controller.js';
 import { validateUpdateCompanyProfile, validateUpdateCompanySettings, handleValidationErrors } from './company.validator.js';
-import authMiddleware from '../../middlewares/auth.js';
+import { authMiddleware } from '../../middlewares/auth.js';
 import asyncWrapper from '../../middlewares/asyncWrapper.js';
 
 const router = express.Router();

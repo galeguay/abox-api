@@ -18,8 +18,9 @@ import companyRoutes from './modules/company/company.routes.js';
 import productsRoutes from './modules/products/products.routes.js';
 import warehousesRoutes from './modules/warehouses/warehouses.routes.js';
 import inventoryRoutes from './modules/inventory/inventory.routes.js';
-import movementsRoutes from './modules/movements/movements.routes.js';
+import movementsRoutes from './modules/stock-movements/movements.routes.js';
 import ordersRoutes from './modules/orders/orders.routes.js';
+import salesRoutes from './modules/sales/sales.routes.js';
 import salesCategoriesRoutes from './modules/sales-categories/sales-categories.routes.js';
 import moneyMovementsRoutes from './modules/money-movements/money-movements.routes.js';
 
@@ -37,6 +38,7 @@ app.use(warehousesRoutes);
 app.use(inventoryRoutes);
 app.use(movementsRoutes);
 app.use(ordersRoutes);
+app.use(salesRoutes);
 app.use(salesCategoriesRoutes);
 app.use(moneyMovementsRoutes);
 app.use('/platform/auth', platformAuthRoutes);
