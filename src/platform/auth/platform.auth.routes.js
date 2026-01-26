@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { login } from './platform.auth.controller.js';
+import { login, refresh, logout } from './platform.auth.controller.js';
 import validateFields from '../../middlewares/validateFields.js';
-import { platformLoginValidator } from './platform.auth.validator.js';
+import { authMiddleware } from '../../middlewares/auth.js';
+import { platformLoginValidator, platformRefreshValidator } from './platform.auth.validator.js';
 
 const router = Router();
 
@@ -12,5 +13,19 @@ router.post(
   validateFields,
   login
 );
+
+router.post(
+  '/refresh',
+  platformRefreshValidator,
+  validateFields,
+  refresh
+);
+
+router.post(
+  '/logout',
+  authMiddleware('PLATFORM'),
+  logout
+);
+
 
 export default router;

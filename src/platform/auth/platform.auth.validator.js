@@ -10,3 +10,9 @@ export const platformLoginValidator = [
     .notEmpty()
     .withMessage('Password requerida')
 ];
+
+export const platformRefreshValidator = [
+  body('refreshToken')
+    .notEmpty()
+    .withMessage('refreshToken requerido')
+];

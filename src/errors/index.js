@@ -1,5 +1,7 @@
 import AppError from './AppError.js';
 
+export { AppError };
+
 export const NotFoundError = (msg = 'Recurso no encontrado') =>
   new AppError(msg, 404);
 

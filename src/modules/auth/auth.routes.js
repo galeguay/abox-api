@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import validateFields from '../../middlewares/validateFields.js';
+import { authMiddleware } from '../../middlewares/auth.js';
 import { emailUniqueOnCreate } from '../../middlewares/emailUnique.js';
 
 import {
@@ -41,7 +42,11 @@ router.post(
 router.post('/refresh', refreshToken);
 
 // Logout
-router.post('/logout', logout);
+router.post(
+    '/logout', 
+    authMiddleware('COMPANY'), 
+    logout
+);
 
 // Recuperación de contraseña
 router.post(

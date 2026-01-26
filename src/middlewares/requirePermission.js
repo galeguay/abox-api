@@ -1,36 +1,79 @@
-const requirePermission = (permission) => {
-  return async (req, res, next) => {
-    const { userId, companyId } = req;
+import createError from 'http-errors';
+import prisma from '../../prisma/client.js';
 
-    const membership = await prisma.userCompany.findFirst({
-      where: { userId, companyId },
-      include: {
-        rolePermissions: {
-          include: { permission: true }
-        },
-        company: {
-          include: {
-            modules: {
-              where: { enabled: true }
-            }
-          }
+const requirePermission = (permissionName) => {
+    return async (req, res, next) => {
+        const { userId, companyId } = req;
+
+        const membership = await prisma.userCompany.findUnique({
+            where: {
+                userId_companyId: {
+                    userId,
+                    companyId,
+                },
+            },
+            select: {
+                role: true,    // Ej: "ADMIN"
+                active: true,  // El campo nuevo que agregamos
+                company: {
+                    select: { active: true } // Ver si la empresa existe/activa
+                }
+            },
+        });
+
+        if (!membership) {
+            throw createError(403, 'No perteneces a esta empresa');
         }
-      }
-    });
 
-    const hasPermission = membership.rolePermissions
-      .some(rp => rp.permission.name === permission);
+        if (!membership.company.active) {
+            throw createError(403, 'Empresa suspendida');
+        }
 
-    const permissionObj = membership.rolePermissions
-      .find(rp => rp.permission.name === permission);
+        // Validación de tu nuevo campo active
+        if (membership.active === false) {
+            throw createError(403, 'Tu usuario ha sido desactivado en esta empresa');
+        }
 
-    const hasModule = membership.company.modules
-      .some(m => m.module.code === permissionObj.permission.moduleCode);
+        // Buscamos directamente en la tabla de unión RolePermission
+        const permissionRecord = await prisma.rolePermission.findFirst({
+            where: {
+                role: membership.role,
+                permission: {
+                    name: permissionName,
+                },
+            },
+            include: {
+                permission: {
+                    include: {
+                        module: true,
+                    },
+                },
+            },
+        });
 
-    if (!hasPermission || !hasModule) {
-      throw createError(403, 'Funcionalidad no habilitada');
-    }
+        if (!permissionRecord) {
+            throw createError(403, 'No tienes permisos para realizar esta acción');
+        }
 
-    next();
-  };
+        // Verificar que el módulo esté activo para la empresa
+        const moduleId = permissionRecord.permission.moduleId;
+
+        const companyModule = await prisma.companyModule.findUnique({
+            where: {
+                companyId_moduleId: {
+                    companyId,
+                    moduleId,
+                },
+            },
+        });
+
+        if (!companyModule || !companyModule.enabled) {
+            throw createError(403, 'El módulo para esta función no está activo en su empresa');
+        }
+
+        // Si pasó todo, adelante
+        next();
+    };
 };
+
+export default requirePermission;

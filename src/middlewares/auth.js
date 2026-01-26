@@ -2,49 +2,75 @@ import jwt from 'jsonwebtoken';
 import createError from 'http-errors';
 import prisma from '../../prisma/client.js';
 
-export const authMiddleware = async (req, res, next) => {
-  const header = req.headers.authorization;
+export const authMiddleware = (typeRequired) => async (req, res, next) => {
+    const header = req.headers.authorization;
 
-  if (!header) {
-    throw createError(401, 'Token requerido');
-  }
-
-  const [type, token] = header.split(' ');
-
-  if (type !== 'Bearer' || !token) {
-    throw createError(401, 'Token inválido');
-  }
-
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-
-    // Identidad común
-    req.user = {
-      id: payload.userId,
-      type: payload.type
-    };
-
-
-    if (payload.type === 'COMPANY') {
-      if (!payload.companyId) {
-        throw createError(401, 'Empresa no definida');
-      }
-
-      const company = await prisma.company.findUnique({
-        where: { id: payload.companyId },
-        select: { active: true }
-      });
-
-      if (!company || !company.active) {
-        throw createError(403, 'Empresa suspendida');
-      }
-
-      req.companyId = payload.companyId;
+    if (!header) {
+        throw createError(401, 'Token requerido');
     }
 
-    // Usuarios de plataforma NO pasan por validación de empresa
-    next();
-  } catch (err) {
-    throw createError(401, 'Token inválido o expirado');
-  }
+    const [scheme, token] = header.split(' ');
+    if (scheme !== 'Bearer' || !token) {
+        throw createError(401, 'Token inválido');
+    }
+
+    try {
+        const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+        if (typeRequired && payload.type !== typeRequired) {
+            throw createError(403, 'No autorizado');
+        }
+
+        req.user = {
+            id: payload.sub || payload.userId,
+            type: payload.type,
+        };
+
+        if (payload.type === 'COMPANY') {
+            if (!payload.companyId) {
+                throw createError(401, 'Empresa no definida');
+            }
+
+            const userCompany = await prisma.userCompany.findUnique({
+                where: {
+                    userId_companyId: {
+                        userId: req.user.id,
+                        companyId: payload.companyId,
+                    },
+                },
+                select: {
+                    active: true,
+                    role: true,
+                    company: {
+                        select: { active: true },
+                    },
+                },
+            });
+
+            if (!userCompany) {
+                throw createError(403, 'No tienes acceso a esta empresa');
+            }
+
+            if (!userCompany.company.active) {
+                throw createError(403, 'Empresa suspendida');
+            }
+
+            if (!userCompany.active) {
+                throw createError(403, 'Tu usuario ha sido desactivado en esta empresa');
+            }
+
+            req.companyId = payload.companyId;
+
+            req.role = userCompany.role;
+        }
+
+        next();
+    } catch (err) {
+        if (err.statusCode) {
+            throw err;
+        }
+        throw createError(401, 'Token inválido o expirado');
+    }
 };
+
+export default authMiddleware;

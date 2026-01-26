@@ -17,37 +17,40 @@ model Company {
     id        String   @id @default(uuid())
     name      String
     active    Boolean  @default(true)
+    config    Json?    @default("{}")
     createdAt DateTime @default(now())
 
-    users              UserCompany[]
-    products           Product[]
-    warehouses         Warehouse[]
-    movements          StockMovement[]
-    moneyMovements     MoneyMovement[]
-    moneyCategories    MoneyCategory[]
-    cashSessions       CashSession[]
-    productCosts       ProductCost[]
-    deliveryZones      DeliveryZone[]
-    customers          Customer[]
-    sales              Sale[]
-    orders             Order[]
-    suppliers          Supplier[]
-    purchases          Purchase[]
-    promotions         Promotion[]
-    productCategories  ProductCategory[]
-    productNoRotations ProductNoRotation[]
-    modifierGroups     ModifierGroup[]
-    cashDailies        CashDaily[]
-    companyModules     CompanyModule[]
-    salesDailies       SalesDaily[]
-    profitByProducts   ProfitByProduct[]
-    salesByProducts    SalesByProduct[]
-    salesByCategories  SalesByCategory[]
+    users               UserCompany[]
+    products            Product[]
+    warehouses          Warehouse[]
+    movements           StockMovement[]
+    moneyMovements      MoneyMovement[]
+    moneyCategories     MoneyCategory[]
+    cashSessions        CashSession[]
+    productCosts        ProductCost[]
+    deliveryZones       DeliveryZone[]
+    customers           Customer[]
+    sales               Sale[]
+    salesBySaleCategory SalesBySaleCategory[]
+    orders              Order[]
+    suppliers           Supplier[]
+    purchases           Purchase[]
+    promotions          Promotion[]
+    productCategories   ProductCategory[]
+    productNoRotations  ProductNoRotation[]
+    modifierGroups      ModifierGroup[]
+    cashDailies         CashDaily[]
+    companyModules      CompanyModule[]
+    salesDailies        SalesDaily[]
+    profitByProducts    ProfitByProduct[]
+    salesByProducts     SalesByProduct[]
+    salesByCategories   SalesByCategory[]
+    saleCategories      SaleCategory[]
 }
 
 enum UserType {
-  COMPANY
-  PLATFORM
+    COMPANY
+    PLATFORM
 }
 
 model User {
@@ -64,14 +67,15 @@ model User {
     sales          Sale[]
     stockMovements StockMovement[]
     moneyMovements MoneyMovement[]
+    refreshTokens  RefreshToken[]
 }
 
-
 model UserCompany {
-    id        String @id @default(uuid())
+    id        String  @id @default(uuid())
     userId    String
     companyId String
     role      Role
+    active    Boolean @default(true)
 
     user    User    @relation(fields: [userId], references: [id])
     company Company @relation(fields: [companyId], references: [id])
@@ -133,6 +137,8 @@ model Warehouse {
     stocks         Stock[]
     stockMovements StockMovement[]
     purchases      Purchase[]
+    orders         Order[]
+    sales          Sale[]
 
     @@index([companyId, active])
 }
@@ -167,6 +173,7 @@ model StockMovement {
     quantity      Decimal
     referenceType StockReferenceType?
     referenceId   String?
+    notes        String?
 
     createdAt   DateTime @default(now())
     createdById String?
@@ -188,6 +195,7 @@ enum PaymentMethod {
     CARD
     TRANSFER
     VIRTUAL
+    CHECK
 }
 
 enum MoneyType {
@@ -296,26 +304,33 @@ model DeliveryZone {
 }
 
 model Sale {
-    id          String   @id @default(uuid())
-    companyId   String
-    createdById String
-    subtotal    Decimal
-    discount    Decimal?
-    total       Decimal
-    deliveryFee Decimal?
-    createdAt   DateTime @default(now())
-    orderId     String?
+    id             String     @id @default(uuid())
+    companyId      String
+    createdById    String
+    subtotal       Decimal
+    discount       Decimal?
+    total          Decimal
+    deliveryFee    Decimal?
+    createdAt      DateTime   @default(now())
+    orderId        String?
+    saleCategoryId String?
+    status         SaleStatus @default(COMPLETED)
+    warehouseId    String?
+    notes String?
 
+    warehouse     Warehouse?    @relation(fields: [warehouseId], references: [id])
     order         Order?        @relation(fields: [orderId], references: [id])
     company       Company       @relation(fields: [companyId], references: [id])
     createdBy     User          @relation(fields: [createdById], references: [id])
     paymentStatus PaymentStatus @default(PENDING)
     items         SaleItem[]
     payments      SalePayment[]
+    saleCategory  SaleCategory? @relation(fields: [saleCategoryId], references: [id])
 
     @@index([createdAt])
     @@index([companyId, createdAt])
     @@index([companyId, paymentStatus, createdAt])
+    @@index([companyId, warehouseId])
 }
 
 model SaleItem {
@@ -344,6 +359,7 @@ model SalePayment {
     reference     String?
 
     sale Sale @relation(fields: [saleId], references: [id])
+
     @@index([paymentMethod, createdAt])
 }
 
@@ -374,6 +390,7 @@ model Order {
     id             String      @id @default(uuid())
     companyId      String
     createdById    String?
+    createdAt      DateTime    @default(now())
     customerId     String?
     status         OrderStatus @default(PENDING)
     deliveryFee    Decimal?
@@ -381,8 +398,10 @@ model Order {
     discount       Decimal?
     total          Decimal
     deliveryZoneId String?
-    createdAt      DateTime    @default(now())
+    warehouseId    String
+    notes String?
 
+    warehouse     Warehouse     @relation(fields: [warehouseId], references: [id])
     company       Company       @relation(fields: [companyId], references: [id])
     createdBy     User?         @relation(fields: [createdById], references: [id])
     customer      Customer?     @relation(fields: [customerId], references: [id])
@@ -439,6 +458,7 @@ model Supplier {
     companyId String
     name      String
     active    Boolean @default(true)
+    notes String? @db.Text
 
     purchases Purchase[]
     company   Company    @relation(fields: [companyId], references: [id])
@@ -463,6 +483,7 @@ model Purchase {
     createdAt   DateTime       @default(now())
     receivedAt  DateTime?
     warehouseId String
+        notes String? @db.Text
 
     warehouse Warehouse @relation(fields: [warehouseId], references: [id])
     company   Company   @relation(fields: [companyId], references: [id])
@@ -745,4 +766,51 @@ model SaleItemModifier {
     modifier Modifier @relation(fields: [modifierId], references: [id])
 
     @@unique([saleItemId, modifierId])
+}
+
+model RefreshToken {
+    id        String   @id @default(uuid())
+    token     String   @unique
+    userId    String
+    companyId String?
+    type      UserType
+    expiresAt DateTime
+    createdAt DateTime @default(now())
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SalesBySaleCategory {
+    id             String  @id @default(uuid())
+    companyId      String
+    saleCategoryId String
+    totalSales     Decimal
+    salesCount     Int
+
+    company      Company      @relation(fields: [companyId], references: [id])
+    saleCategory SaleCategory @relation(fields: [saleCategoryId], references: [id])
+
+    @@unique([companyId, saleCategoryId])
+    @@index([companyId])
+}
+
+model SaleCategory {
+    id        String   @id @default(uuid())
+    companyId String
+    name      String
+    color     String?
+    active    Boolean  @default(true)
+    createdAt DateTime @default(now())
+
+    company         Company               @relation(fields: [companyId], references: [id])
+    sales           Sale[]
+    salesByCategory SalesBySaleCategory[]
+
+    @@unique([companyId, name])
+    @@index([companyId, active])
+}
+
+enum SaleStatus {
+    COMPLETED
+    CANCELED
 }

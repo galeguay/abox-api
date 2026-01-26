@@ -1,4 +1,4 @@
-import { prisma } from '../lib/prisma.js';
+import prisma from '../../prisma/client.js';
 
 // CREATE (register / alta por empresa)
 export const emailUniqueOnCreate = (field = 'email') => {

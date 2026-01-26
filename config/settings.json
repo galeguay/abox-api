@@ -1,0 +1,46 @@
+{
+  "platform": {
+    "name": "Abox Platform",
+    "version": "1.0.0",
+    "environment": "production",
+    "timezone": "UTC",
+    "language": "es"
+  },
+  "security": {
+    "passwordPolicy": {
+      "minLength": 8,
+      "requireUppercase": true,
+      "requireNumbers": true,
+      "requireSpecialChars": true
+    },
+    "sessionTimeout": 3600,
+    "maxLoginAttempts": 5,
+    "lockoutDuration": 900
+  },
+  "email": {
+    "enabled": false,
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "secure": true,
+    "auth": {
+      "user": "",
+      "pass": ""
+    },
+    "from": "noreply@abox.com"
+  },
+  "integrations": {
+    "sentry": {
+      "enabled": false,
+      "dsn": ""
+    },
+    "slack": {
+      "enabled": false,
+      "webhook": ""
+    }
+  },
+  "maintenance": {
+    "enabled": false,
+    "message": "Sistema en mantenimiento",
+    "scheduledTime": null
+  }
+}
