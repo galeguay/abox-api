@@ -3,14 +3,13 @@ import { authMiddleware } from '../../middlewares/auth.js';
 import requireRole from '../../middlewares/requireRole.js';
 import validateFields from '../../middlewares/validateFields.js';
 import { auditMiddleware } from '../../middlewares/auditMiddleware.js';
-import { updateOrderDetailsValidator } from './orders.validator.js';
 import * as ordersController from './orders.controller.js';
 import {
     createOrderValidator,
     updateOrderStatusValidator,
-    addOrderItemValidator,
     addOrderPaymentValidator,
     listOrdersValidator,
+    updateOrderValidator
 } from './orders.validator.js';
 
 const router = Router();
@@ -52,22 +51,6 @@ router.put(
     ordersController.updateOrderStatus
 );
 
-// POST /companies/:companyId/orders/:id/items - Agregar item a orden
-router.post(
-    '/companies/:companyId/orders/:id/items',
-    addOrderItemValidator,
-    validateFields,
-    auditMiddleware('CREATE', 'ORDER_ITEM'),
-    ordersController.addOrderItem
-);
-
-// DELETE /companies/:companyId/orders/:id/items/:itemId - Eliminar item
-router.delete(
-    '/companies/:companyId/orders/:id/items/:itemId',
-    auditMiddleware('DELETE', 'ORDER_ITEM'),
-    ordersController.deleteOrderItem
-);
-
 // POST /companies/:companyId/orders/:id/payments - Agregar pago
 router.post(
     '/companies/:companyId/orders/:id/payments',
@@ -79,12 +62,11 @@ router.post(
 
 // PUT /companies/:companyId/orders/:id/details - Actualizar detalles (notas/precios)
 router.put(
-    '/companies/:companyId/orders/:id/details',
-    updateOrderDetailsValidator,
+    '/companies/:companyId/orders/:id',
+    updateOrderValidator,
     validateFields,
     auditMiddleware('UPDATE', 'ORDER'),
-    ordersController.updateOrderDetails
+    ordersController.updateOrder
 );
-
 export default router;
 

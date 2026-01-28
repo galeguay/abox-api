@@ -34,7 +34,7 @@ export const createCategory = async (companyId, data) => {
 // Listar categorías (Solo activas por defecto para los selectores)
 export const getCategories = async (companyId, includeInactive = false) => {
     const where = { companyId };
-    
+
     // Si no pedimos inactivas explícitamente, filtramos active: true
     if (!includeInactive) {
         where.active = true;
@@ -64,14 +64,15 @@ export const updateCategory = async (companyId, id, data) => {
     // Verificar existencia
     const category = await getCategoryById(companyId, id);
 
-    // Si cambia el nombre, verificar que no duplique a otra
-    if (name && name !== category.name) {
-        const exists = await prisma.saleCategory.findUnique({
-            where: {
-                companyId_name: { companyId, name }
-            }
+    if (name) {
+        const duplicate = await prisma.saleCategory.findUnique({
+            where: { companyId_name: { companyId, name } }
         });
-        if (exists) throw new AppError('Ya existe otra categoría con este nombre', 400);
+
+        // Si existe Y no es la misma categoría que estoy editando
+        if (duplicate && duplicate.id !== id) {
+            throw new AppError('Ya existe otra categoría con este nombre', 400);
+        }
     }
 
     return await prisma.saleCategory.update({
@@ -88,7 +89,7 @@ export const updateCategory = async (companyId, id, data) => {
 export const deleteCategory = async (companyId, id) => {
     // Verificar si tiene ventas asociadas antes de permitir borrar o desactivar
     // (Opcional: Si quieres ser estricto. Si es soft delete, no importa tanto).
-    
+
     await getCategoryById(companyId, id);
 
     return await prisma.saleCategory.update({

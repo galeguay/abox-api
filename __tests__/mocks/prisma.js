@@ -53,7 +53,7 @@ export const mockPrisma = {
         count: jest.fn(),
         findFirst: jest.fn(),
         update: jest.fn(),
-        delete: jest.fn(), // Es bueno tenerlo por si acaso implementas soft delete luego
+        delete: jest.fn(),
     },
     stock: {
         findUnique: jest.fn(),
@@ -62,10 +62,13 @@ export const mockPrisma = {
         create: jest.fn(),
         update: jest.fn(),
         upsert: jest.fn(),
+        groupBy: jest.fn(),
+        updateMany: jest.fn()
     },
     stockMovement: {
         create: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
     },
     order: {
         findUnique: jest.fn(),
@@ -81,6 +84,7 @@ export const mockPrisma = {
         findFirst: jest.fn(),
         delete: jest.fn(),
         update: jest.fn(),
+        deleteMany: jest.fn(),
     },
     orderPayment: {
         create: jest.fn(),
@@ -90,8 +94,6 @@ export const mockPrisma = {
         findUnique: jest.fn(),
         findMany: jest.fn(),
     },
-
-    // --- Otros ---
     refreshToken: {
         create: jest.fn(),
         deleteMany: jest.fn(),
@@ -153,6 +155,15 @@ export const mockPrisma = {
         // delete: jest.fn(), // No lo usas en el servicio (usas soft delete con update), pero puedes agregarlo si quieres prevenir errores futuros.
     },
     productCategory: {
+        findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+        count: jest.fn(),
+    },
+    customer: {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
         findMany: jest.fn(),

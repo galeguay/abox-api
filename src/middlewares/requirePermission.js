@@ -13,10 +13,10 @@ const requirePermission = (permissionName) => {
                 },
             },
             select: {
-                role: true,    // Ej: "ADMIN"
-                active: true,  // El campo nuevo que agregamos
+                role: true,
+                active: true,
                 company: {
-                    select: { active: true } // Ver si la empresa existe/activa
+                    select: { active: true }
                 }
             },
         });

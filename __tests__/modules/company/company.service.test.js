@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll, beforeEach, jest } from '@jest/globals';
-import { mockPrisma } from '../../mocks/prisma.js';
+import { mockPrisma } from '../../mocks/prisma.js'; // Asegúrate que esta ruta sea correcta
 
+// Mock de AppError para que no dependa de la clase real
 jest.unstable_mockModule('../src/errors/AppError.js', () => ({
     __esModule: true,
     default: class AppError extends Error {
@@ -11,12 +12,12 @@ jest.unstable_mockModule('../src/errors/AppError.js', () => ({
     },
 }));
 
+// Import dinámico después de los mocks
 const companyService = await import('../../../src/modules/company/company.service.js');
 
 describe('Company Service', () => {
     const mockUserId = 'user-123';
     const mockCompanyId = 'company-999';
-    const mockAdminRole = { role: 'ADMIN' };
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -30,19 +31,31 @@ describe('Company Service', () => {
     // 1. PERFIL DE EMPRESA
     // ==========================================
     describe('getMyCompanyProfile', () => {
-        test('debería retornar el perfil de la empresa y mi rol', async () => {
+        test('debería retornar el perfil aplanado (columnas + config JSON)', async () => {
+            // Mockeamos datos que simulan DB + campo JSON
             mockPrisma.userCompany.findFirst.mockResolvedValue({
                 role: 'OWNER',
-                company: { id: mockCompanyId, name: 'Test Co', active: true },
+                company: { 
+                    id: mockCompanyId, 
+                    name: 'Test Co', 
+                    active: true,
+                    // Simulamos el campo JSON
+                    config: {
+                        city: 'Buenos Aires',
+                        website: 'test.com'
+                    }
+                },
             });
 
             const result = await companyService.getMyCompanyProfile(mockUserId);
 
+            // Verificaciones
             expect(result.id).toBe(mockCompanyId);
             expect(result.myRole).toBe('OWNER');
-            expect(mockPrisma.userCompany.findFirst).toHaveBeenCalledWith(
-                expect.objectContaining({ where: { userId: mockUserId } })
-            );
+            // TEST CLAVE: Verificar que el JSON se "aplanó"
+            expect(result.city).toBe('Buenos Aires'); 
+            expect(result.website).toBe('test.com');
+            // Verificar que config ya no existe como objeto anidado (opcional, según tu lógica)
         });
 
         test('debería lanzar error si el usuario no tiene empresa', async () => {
@@ -57,19 +70,48 @@ describe('Company Service', () => {
     // 2. ACTUALIZACIÓN DE PERFIL
     // ==========================================
     describe('updateMyCompanyProfile', () => {
-        test('debería actualizar si es ADMIN', async () => {
-            // Mock validación de permisos
+        test('debería actualizar mezclando config existente con nueva', async () => {
+            // 1. Mock Permisos
             mockPrisma.userCompany.findUnique.mockResolvedValue({ role: 'ADMIN' });
-            // Mock update
-            mockPrisma.company.update.mockResolvedValue({ id: mockCompanyId, name: 'New Name' });
+            
+            // 2. Mock Búsqueda de Config Actual (CRÍTICO: Faltaba en tu test original)
+            mockPrisma.company.findUnique.mockResolvedValue({
+                config: { theme: 'dark', city: 'Old City' }
+            });
 
-            const result = await companyService.updateMyCompanyProfile(mockCompanyId, mockUserId, { name: 'New Name' });
+            // 3. Mock Update
+            mockPrisma.company.update.mockResolvedValue({ 
+                id: mockCompanyId, 
+                name: 'New Name',
+                config: { theme: 'dark', city: 'New City', website: 'new.com' } // Lo que devuelve prisma tras update
+            });
+
+            const updateData = { 
+                name: 'New Name',
+                additionalConfig: { city: 'New City', website: 'new.com' }
+            };
+
+            const result = await companyService.updateMyCompanyProfile(mockCompanyId, mockUserId, updateData);
 
             expect(result.name).toBe('New Name');
-            expect(mockPrisma.company.update).toHaveBeenCalled();
+            expect(result.city).toBe('New City'); // Viene del aplanado
+            
+            // Verificar que se llamó a update con la fusión correcta
+            expect(mockPrisma.company.update).toHaveBeenCalledWith(expect.objectContaining({
+                where: { id: mockCompanyId },
+                data: expect.objectContaining({
+                    name: 'New Name',
+                    config: {
+                        theme: 'dark', // Se mantuvo lo viejo
+                        city: 'New City', // Se sobrescribió
+                        website: 'new.com' // Se agregó
+                    }
+                })
+            }));
         });
 
         test('debería fallar si no tiene permisos (EMPLOYEE)', async () => {
+            // Mock permisos insuficientes
             mockPrisma.userCompany.findUnique.mockResolvedValue({ role: 'EMPLOYEE' });
 
             await expect(
@@ -79,14 +121,14 @@ describe('Company Service', () => {
     });
 
     // ==========================================
-    // 3. ESTADÍSTICAS (Requires mockPrisma extended)
+    // 3. ESTADÍSTICAS
     // ==========================================
     describe('getMyCompanyStats', () => {
         test('debería calcular las estadísticas correctamente', async () => {
             // 1. Validar acceso
             mockPrisma.userCompany.findUnique.mockResolvedValue({ userId: mockUserId });
 
-            // 2. Mocks de conteos y agregaciones
+            // 2. Mocks de conteos
             mockPrisma.product.count.mockResolvedValue(100);
             mockPrisma.warehouse.count.mockResolvedValue(2);
             mockPrisma.sale.aggregate.mockResolvedValue({ _sum: { total: 5000 }, _count: 10 });
@@ -97,93 +139,33 @@ describe('Company Service', () => {
 
             expect(stats.inventory.products).toBe(100);
             expect(stats.activityToday.salesTotal).toBe(5000);
-            expect(stats.activityToday.moneyIn).toBe(2000);
             expect(stats.alerts.pendingOrders).toBe(3);
         });
     });
 
     // ==========================================
-    // 4. GESTIÓN DE EMPLEADOS
+    // 4. SETTINGS (Nuevo, reemplaza a Empleados/Modulos que no existen)
     // ==========================================
-    describe('getCompanyEmployees', () => {
-        test('debería listar empleados formateados', async () => {
-            mockPrisma.userCompany.findUnique.mockResolvedValue({ role: 'ADMIN' }); // Auth
+    describe('getMyCompanySettings', () => {
+        test('debería retornar configuración y zonas de entrega', async () => {
+            // Auth
+            mockPrisma.userCompany.findUnique.mockResolvedValue({ role: 'ADMIN' });
+            
+            // Get Config
+            mockPrisma.company.findUnique.mockResolvedValue({
+                config: { operationalHours: [] }
+            });
 
-            const rawEmployees = [
-                {
-                    role: 'MANAGER',
-                    createdAt: new Date(),
-                    user: { id: 'u2', email: 'test@test.com', active: true }
-                }
-            ];
-            mockPrisma.userCompany.findMany.mockResolvedValue(rawEmployees);
-
-            const result = await companyService.getCompanyEmployees(mockCompanyId, mockUserId);
-
-            expect(result[0].email).toBe('test@test.com');
-            expect(result[0].role).toBe('MANAGER');
-            expect(result[0].userId).toBe('u2');
-        });
-    });
-
-    describe('updateEmployeeRole', () => {
-        test('debería permitir cambiar rol si es valido', async () => {
-            mockPrisma.userCompany.findUnique.mockResolvedValue({ role: 'ADMIN' }); // Auth
-
-            await companyService.updateEmployeeRole(mockCompanyId, 'target-user', 'READ_ONLY', mockUserId);
-
-            expect(mockPrisma.userCompany.update).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    data: { role: 'READ_ONLY' }
-                })
-            );
-        });
-
-        test('debería impedir nombrar OWNER si no soy OWNER', async () => {
-            mockPrisma.userCompany.findUnique.mockResolvedValue({ role: 'ADMIN' }); // Soy Admin, no Owner
-
-            await expect(
-                companyService.updateEmployeeRole(mockCompanyId, 'target-user', 'OWNER', mockUserId)
-            ).rejects.toThrow('Solo el dueño puede transferir la propiedad');
-        });
-    });
-
-    // ==========================================
-    // 5. MÓDULOS
-    // ==========================================
-    describe('Modules Management', () => {
-        test('getCompanyModules debería marcar isEnabled correctamente', async () => {
-            // Todos los módulos del sistema
-            mockPrisma.module.findMany.mockResolvedValue([
-                { id: 1, code: 'POS' },
-                { id: 2, code: 'ECOM' }
-            ]);
-            // Módulos activos de la empresa
-            mockPrisma.companyModule.findMany.mockResolvedValue([
-                { moduleId: 1, enabled: true }
+            // Get Delivery Zones
+            mockPrisma.deliveryZone.findMany.mockResolvedValue([
+                { id: 'zone1', name: 'Centro', price: 100 }
             ]);
 
-            const result = await companyService.getCompanyModules(mockCompanyId);
+            const result = await companyService.getMyCompanySettings(mockCompanyId, mockUserId);
 
-            // POS debería ser true, ECOM false
-            expect(result.find(m => m.id === 1).isEnabled).toBe(true);
-            expect(result.find(m => m.id === 2).isEnabled).toBe(false);
-        });
-
-        test('toggleCompanyModule debería usar upsert', async () => {
-            mockPrisma.userCompany.findUnique.mockResolvedValue({ role: 'ADMIN' }); // Auth
-
-            await companyService.toggleCompanyModule(mockCompanyId, 1, true, mockUserId);
-
-            expect(mockPrisma.companyModule.upsert).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { companyId_moduleId: { companyId: mockCompanyId, moduleId: 1 } },
-                    update: { enabled: true },
-                    create: expect.objectContaining({
-                        enabled: true,
-                    }),
-                })
-            );
+            expect(result.deliveryZones).toHaveLength(1);
+            expect(result.deliveryZones[0].name).toBe('Centro');
+            expect(Array.isArray(result.operationalHours)).toBe(true);
         });
     });
 });

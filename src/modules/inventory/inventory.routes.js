@@ -8,6 +8,7 @@ import * as inventoryController from './inventory.controller.js';
 import {
   getStockValidator,
   getTotalStockValidator,
+  getInventoryReportValidator,
 } from './inventory.validator.js';
 
 const router = Router();
@@ -36,6 +37,7 @@ router.get(
 // GET /companies/:companyId/inventory/report - Reporte de inventario
 router.get(
   '/companies/:companyId/inventory/report',
+  getInventoryReportValidator,
   auditMiddleware('READ', 'INVENTORY'),
   inventoryController.getInventoryReport
 );

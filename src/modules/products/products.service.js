@@ -19,11 +19,22 @@ export const createProduct = async (companyId, data) => {
                 name: data.name,
                 sku: data.sku || `SKU-${Date.now()}`,
                 companyId,
+                price: data.price || 0,
                 active: true,
-                // Vinculamos la categoría si viene en el request
                 productCategoryId: data.categoryId || null,
             },
         });
+
+        if (data.price) {
+            await tx.productPrice.create({
+                data: {
+                    companyId,
+                    productId: product.id,
+                    price: data.price,
+                    reason: 'Precio inicial',
+                },
+            });
+        }
 
         if (data.cost) {
             await tx.productCost.create({
@@ -132,20 +143,36 @@ export const updateProduct = async (companyId, productId, data) => {
             where: { id: productId },
             data: {
                 name: data.name || undefined,
+                price: data.price || undefined,
                 sku: data.sku || undefined,
                 active: data.active !== undefined ? data.active : undefined,
                 productCategoryId: data.categoryId || undefined,
             },
         });
 
-        // Si actualizan el costo, creamos un nuevo registro en el historial
+        if (data.price) {
+            const lastPrice = await tx.productPrice.findFirst({
+                where: { productId },
+                orderBy: { createdAt: 'desc' }
+            });
+            if (!lastPrice || Number(lastPrice.price) !== Number(data.price)) {
+                await tx.productPrice.create({
+                    data: {
+                        companyId,
+                        productId,
+                        price: data.price,
+                        reason: 'Cambio manual de precio',
+                    },
+                });
+            }
+        }
+
         if (data.cost) {
             // Verificamos el último costo para no duplicar si es el mismo
             const lastCost = await tx.productCost.findFirst({
                 where: { productId },
                 orderBy: { createdAt: 'desc' }
             });
-
             if (!lastCost || Number(lastCost.cost) !== Number(data.cost)) {
                 await tx.productCost.create({
                     data: {

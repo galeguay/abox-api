@@ -51,7 +51,7 @@ export const updateCategory = asyncWrapper(async (req, res) => {
         data: category
     });
 });
-updateCategoryValidator
+
 export const deleteCategory = asyncWrapper(async (req, res) => {
     const { companyId, id } = req.params;
 

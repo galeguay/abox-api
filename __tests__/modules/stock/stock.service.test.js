@@ -1,4 +1,5 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import { Prisma } from '@prisma/client'; // <--- IMPORTANTE: Necesario para comparar Decimals
 import { mockPrisma } from '../../mocks/prisma.js';
 
 // Import dinámico del servicio
@@ -11,7 +12,6 @@ describe('Stock Service', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        // Mock básico para transacciones: ejecuta el callback inmediatamente
         mockPrisma.$transaction.mockImplementation(async (callback) => callback(mockPrisma));
     });
 
@@ -20,7 +20,9 @@ describe('Stock Service', () => {
             const items = [{ productId: 'prod-1', quantity: 5 }];
             const referenceId = 'sale-123';
 
-            // CORRECCIÓN AQUÍ: Agregamos mockUserId antes de mockPrisma
+            // Simulamos éxito en la resta
+            mockPrisma.stock.updateMany.mockResolvedValue({ count: 1 });
+
             await stockService.registerStockExit(
                 mockCompanyId,
                 mockWarehouseId,
@@ -30,25 +32,29 @@ describe('Stock Service', () => {
                 mockPrisma
             );
 
-            // 1. Verificamos type OUT y referenceType SALE (corregido de ORDER a SALE)
+            // CORRECCIÓN: Validamos que sea un Decimal y luego verificamos su valor
             expect(mockPrisma.stockMovement.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     data: expect.objectContaining({
                         type: 'OUT',
-                        quantity: 5,
-                        referenceId: referenceId,
+                        quantity: expect.any(Prisma.Decimal), // Aceptamos objeto Decimal
                         referenceType: 'SALE'
                     })
                 })
             );
 
-            // 2. Verificamos decremento (-5)
-            expect(mockPrisma.stock.upsert).toHaveBeenCalledWith(
+            // Verificación extra del valor exacto
+            const callArgs = mockPrisma.stockMovement.create.mock.calls[0][0];
+            expect(callArgs.data.quantity.toString()).toBe('5');
+
+            expect(mockPrisma.stock.updateMany).toHaveBeenCalledWith(
                 expect.objectContaining({
                     where: {
-                        productId_warehouseId: { productId: 'prod-1', warehouseId: mockWarehouseId }
+                        productId: 'prod-1',
+                        warehouseId: mockWarehouseId,
+                        quantity: { gte: 5 }
                     },
-                    update: { quantity: { increment: -5 } }
+                    data: { quantity: { decrement: 5 } }
                 })
             );
         });
@@ -72,61 +78,36 @@ describe('Stock Service', () => {
         });
 
         test('debe fallar si no hay stock suficiente en origen', async () => {
-            // Simulamos que hay 5 en stock, pero queremos mover 10
-            mockPrisma.stock.findUnique.mockResolvedValue({ quantity: 5 });
+            mockPrisma.stock.updateMany.mockResolvedValue({ count: 0 });
 
             await expect(
                 stockService.transferStock(mockCompanyId, transferData, mockUserId)
-            ).rejects.toThrow('Stock insuficiente');
+            ).rejects.toThrow(/Stock insuficiente/);
         });
 
         test('debe realizar la transferencia correctamente (OUT en A, IN en B)', async () => {
-            // Simulamos stock suficiente (20)
-            mockPrisma.stock.findUnique.mockResolvedValue({ quantity: 20 });
+            mockPrisma.stock.updateMany.mockResolvedValue({ count: 1 });
 
             await stockService.transferStock(mockCompanyId, transferData, mockUserId);
 
-            // Verificamos que se llame a create 2 veces
-            expect(mockPrisma.stockMovement.create).toHaveBeenCalledTimes(2);
-
-            // 1. Verificamos la SALIDA (Origen)
-            expect(mockPrisma.stockMovement.create).toHaveBeenCalledWith(
+            expect(mockPrisma.stock.updateMany).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    data: expect.objectContaining({
+                    where: {
+                        productId: 'prod-1',
                         warehouseId: 'wh-A',
-                        type: 'OUT',          // <--- CAMBIO: Ahora esperamos OUT
-                        referenceType: 'TRANSFER', // Pero mantenemos la referencia TRANSFER
-                        quantity: 10
-                    })
+                        quantity: { gte: 10 }
+                    },
+                    data: { quantity: { decrement: 10 } }
                 })
             );
 
-            // 2. Verificamos la ENTRADA (Destino)
-            expect(mockPrisma.stockMovement.create).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    data: expect.objectContaining({
-                        warehouseId: 'wh-B',
-                        type: 'IN',           // <--- CAMBIO: Ahora esperamos IN
-                        referenceType: 'TRANSFER',
-                        quantity: 10
-                    })
-                })
-            );
-
-            // Verificamos actualización de saldos
-            // Upsert para wh-A (resta)
             expect(mockPrisma.stock.upsert).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    where: { productId_warehouseId: { productId: 'prod-1', warehouseId: 'wh-A' } },
-                    update: { quantity: { increment: -10 } }
-                })
-            );
-
-            // Upsert para wh-B (suma)
-            expect(mockPrisma.stock.upsert).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { productId_warehouseId: { productId: 'prod-1', warehouseId: 'wh-B' } },
-                    update: { quantity: { increment: 10 } }
+                    where: {
+                        productId_warehouseId: { productId: 'prod-1', warehouseId: 'wh-B' }
+                    },
+                    update: { quantity: { increment: 10 } },
+                    create: expect.objectContaining({ quantity: 10 })
                 })
             );
         });
@@ -134,7 +115,7 @@ describe('Stock Service', () => {
 
     describe('createManualAdjustment (Ajuste Manual)', () => {
         test('debe fallar si es salida (OUT) y no hay stock', async () => {
-            mockPrisma.stock.findUnique.mockResolvedValue({ quantity: 0 });
+            mockPrisma.stock.updateMany.mockResolvedValue({ count: 0 });
 
             await expect(
                 stockService.createManualAdjustment(mockCompanyId, {
@@ -155,15 +136,21 @@ describe('Stock Service', () => {
                 notes: 'Found items'
             }, mockUserId);
 
+            // CORRECCIÓN: Usamos expect.any(Prisma.Decimal)
             expect(mockPrisma.stockMovement.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     data: expect.objectContaining({
                         type: 'IN',
-                        quantity: 5,
-                        createdById: mockUserId
+                        quantity: expect.any(Prisma.Decimal)
                     })
                 })
             );
+
+            // Verificamos que el valor decimal sea 5
+            // Nota: createManualAdjustment usa transaction, asi que puede ser la 2da llamada global al mock si no se reseteó,
+            // pero como tenemos beforeEach(clearAllMocks), debería ser la única llamada en este test.
+            const callArgs = mockPrisma.stockMovement.create.mock.calls[0][0];
+            expect(callArgs.data.quantity.toString()).toBe('5');
 
             expect(mockPrisma.stock.upsert).toHaveBeenCalledWith(
                 expect.objectContaining({

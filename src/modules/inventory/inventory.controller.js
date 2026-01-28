@@ -2,39 +2,42 @@ import asyncWrapper from '../../middlewares/asyncWrapper.js';
 import * as inventoryService from './inventory.service.js';
 
 export const getStockByProduct = asyncWrapper(async (req, res) => {
-  const { companyId, productId } = req.params;
-  const { warehouseId } = req.query;
+    const { companyId, productId } = req.params;
+    const { warehouseId } = req.query;
 
-  if (!warehouseId) {
-    return res.status(400).json({ error: 'warehouseId is required as query parameter' });
-  }
+    const stock = await inventoryService.getStockByProduct(companyId, productId, warehouseId);
 
-  const stock = await inventoryService.getStockByProduct(companyId, productId, warehouseId);
-
-  res.json({
-    success: true,
-    data: stock,
-  });
+    res.json({
+        success: true,
+        data: stock,
+    });
 });
 
 export const getTotalStock = asyncWrapper(async (req, res) => {
-  const { companyId, productId } = req.params;
+    const { companyId, productId } = req.params;
 
-  const stock = await inventoryService.getTotalStock(companyId, productId);
+    const stock = await inventoryService.getTotalStock(companyId, productId);
 
-  res.json({
-    success: true,
-    data: stock,
-  });
+    res.json({
+        success: true,
+        data: stock,
+    });
 });
 
 export const getInventoryReport = asyncWrapper(async (req, res) => {
-  const { companyId } = req.params;
+    const { companyId } = req.params;
+    const { page, limit, categoryId } = req.query; // Extraemos categoryId de la query
 
-  const report = await inventoryService.getInventoryReport(companyId);
+    const result = await inventoryService.getInventoryReport(
+        companyId,
+        parseInt(page) || 1,
+        parseInt(limit) || 10,
+        categoryId // Lo pasamos al servicio
+    );
 
-  res.json({
-    success: true,
-    data: report,
-  });
+    res.json({
+        success: true,
+        data: result.items,
+        pagination: result.pagination
+    });
 });

@@ -1,0 +1,7 @@
+import { ROLES, STAFF_ROLES, ALL_ROLES } from '../constants/roles.js';
+
+export const INVENTORY_PERMISSIONS = {
+  READ: ALL_ROLES,
+  WRITE: STAFF_ROLES,
+  DELETE: [ROLES.OWNER, ROLES.ADMIN],
+};

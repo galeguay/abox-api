@@ -1,5 +1,7 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../../../prisma/client.js';
 
+const { Decimal } = Prisma;
 // ==========================================
 // ESCRITURA (Interna / Transaccional)
 // ==========================================
@@ -9,16 +11,16 @@ import prisma from '../../../prisma/client.js';
  * NO actualiza cantidades, solo deja constancia.
  */
 export const logStockMovement = async (data, tx) => {
-    const { 
-        companyId, 
-        warehouseId, 
-        productId, 
-        type, 
-        quantity, 
-        referenceType, 
-        referenceId, 
-        notes, 
-        userId 
+    const {
+        companyId,
+        warehouseId,
+        productId,
+        type,
+        quantity,
+        referenceType,
+        referenceId,
+        notes,
+        userId
     } = data;
 
     return await tx.stockMovement.create({
@@ -26,12 +28,12 @@ export const logStockMovement = async (data, tx) => {
             companyId,
             warehouseId,
             productId,
-            type, // 'IN', 'OUT', 'ADJUST'
-            quantity: parseFloat(quantity), // O usar Decimal si migraste
-            referenceType, // 'SALE', 'PURCHASE', 'TRANSFER', 'ADJUSTMENT'
+            type,
+            quantity: new Prisma.Decimal(quantity),
+            referenceType,
             referenceId: referenceId || null,
             notes: notes || null,
-            createdById: userId 
+            createdById: userId
         },
     });
 };

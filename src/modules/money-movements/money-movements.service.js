@@ -18,7 +18,8 @@ export const createMoneyMovement = async (companyId, userId, data) => {
         data: {
             companyId,
             type,
-            amount: parseFloat(amount),
+            // [MODIFICADO] Se elimina parseFloat para evitar imprecisión. Prisma convierte el string/number a Decimal.
+            amount: amount, 
             paymentMethod,
             categoryId: categoryId || null,
             description: description || null,
@@ -35,9 +36,52 @@ export const createMoneyMovement = async (companyId, userId, data) => {
     return movement;
 };
 
+export const getMoneyMovements = async (companyId, filters) => {
+    const { page, limit, type, paymentMethod, categoryId, startDate, endDate } = filters;
+    const skip = (page - 1) * limit;
+
+    const where = {
+        companyId,
+        type,
+        paymentMethod,
+        categoryId,
+        ...(startDate || endDate ? {
+            createdAt: {
+                ...(startDate && { gte: new Date(startDate) }),
+                ...(endDate && { lte: new Date(endDate) }),
+            },
+        } : {}),
+    };
+
+    const [movements, total] = await Promise.all([
+        prisma.moneyMovement.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                category: { select: { id: true, name: true } },
+                createdBy: { select: { id: true, email: true } },
+            },
+        }),
+        prisma.moneyMovement.count({ where })
+    ]);
+
+    return {
+        data: movements,
+        pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        }
+    };
+};
+
 export const getMoneyMovementsReport = async (companyId, filters = {}) => {
     const { startDate, endDate } = filters;
 
+    // 1. Construir el filtro dinámico (WHERE)
     const where = {
         companyId,
         ...(startDate || endDate ? {
@@ -48,85 +92,99 @@ export const getMoneyMovementsReport = async (companyId, filters = {}) => {
         } : {}),
     };
 
-    // 1. Totales Generales (IN/OUT)
-    const totalIn = await prisma.moneyMovement.aggregate({
-        where: { ...where, type: 'IN' },
-        _sum: { amount: true }
-    });
+    // 2. Ejecutar consultas de agregación
+    const [totalInResult, totalOutResult, paymentMethodStats, categoryStats] = await Promise.all([
+        // A. Total Ingresos
+        prisma.moneyMovement.aggregate({
+            where: { ...where, type: 'IN' },
+            _sum: { amount: true }
+        }),
+        // B. Total Egresos
+        prisma.moneyMovement.aggregate({
+            where: { ...where, type: 'OUT' },
+            _sum: { amount: true }
+        }),
+        // C. Agrupado por Método de Pago
+        prisma.moneyMovement.groupBy({
+            by: ['paymentMethod', 'type'],
+            where,
+            _sum: { amount: true },
+            _count: true
+        }),
+        // D. Agrupado por Categoría (Solo IDs y sumas)
+        prisma.moneyMovement.groupBy({
+            by: ['categoryId', 'type'],
+            where: {
+                ...where,
+                categoryId: { not: null } // Ignorar movimientos sin categoría
+            },
+            _sum: { amount: true },
+        })
+    ]);
 
-    const totalOut = await prisma.moneyMovement.aggregate({
-        where: { ...where, type: 'OUT' },
-        _sum: { amount: true }
-    });
-
-    // 2. Por Método de Pago
-    const paymentMethodStats = await prisma.moneyMovement.groupBy({
-        by: ['paymentMethod', 'type'],
-        where,
-        _sum: { amount: true },
-        _count: true
-    });
-
-    // Agrupar por método de pago
-    const paymentMethods = [...new Set(paymentMethodStats.map(s => s.paymentMethod))];
-    const byPaymentMethod = paymentMethods.map(method => {
-        const stats = paymentMethodStats.filter(s => s.paymentMethod === method);
-        const inStat = stats.find(s => s.type === 'IN');
-        const outStat = stats.find(s => s.type === 'OUT');
-
-        return {
-            paymentMethod: method,
-            in: parseFloat(inStat?._sum.amount || 0),
-            out: parseFloat(outStat?._sum.amount || 0),
-            total: parseFloat((inStat?._sum.amount || 0) + (outStat?._sum.amount || 0)),
-            transactions: (inStat?._count || 0) + (outStat?._count || 0)
-        };
-    });
-
-    // 3. Por Categoría (OPTIMIZADO)
-    // Agrupamos por ID de categoría y Tipo (IN/OUT) directamente en BD
-    const categoryStats = await prisma.moneyMovement.groupBy({
-        by: ['categoryId', 'type'],
-        where: {
-            ...where,
-            categoryId: { not: null }
-        },
-        _sum: { amount: true },
-    });
-
-    // Para mostrar los nombres, buscamos las categorías involucradas
-    // Obtenemos IDs únicos
+    // 3. Obtener nombres de Categorías
     const categoryIds = [...new Set(categoryStats.map(s => s.categoryId))];
     const categories = await prisma.moneyCategory.findMany({
         where: { id: { in: categoryIds } },
         select: { id: true, name: true }
     });
 
-    // Mapeamos los resultados para el formato que necesita el frontend
-    const groupedByCategory = categories.map(cat => {
-        // Filtrar stats para esta categoría
-        const stats = categoryStats.filter(s => s.categoryId === cat.id);
+    // 4. Procesamiento y Formateo de Datos
 
-        const totalIn = stats.find(s => s.type === 'IN')?._sum.amount || 0;
-        const totalOut = stats.find(s => s.type === 'OUT')?._sum.amount || 0;
+    // [MODIFICADO] Uso de .toNumber() en lugar de parseFloat para los totales
+    // Prisma devuelve un objeto Decimal en _sum.amount, o null si no hay registros
+    const totalIn = totalInResult._sum.amount?.toNumber() ?? 0;
+    const totalOut = totalOutResult._sum.amount?.toNumber() ?? 0;
+
+    // --- Procesar Métodos de Pago ---
+    const uniqueMethods = [...new Set(paymentMethodStats.map(s => s.paymentMethod))];
+    const byPaymentMethod = uniqueMethods.map(method => {
+        const stats = paymentMethodStats.filter(s => s.paymentMethod === method);
+        const inStat = stats.find(s => s.type === 'IN');
+        const outStat = stats.find(s => s.type === 'OUT');
+
+        // [MODIFICADO] Uso de .toNumber() seguro (con operador ?.)
+        const inAmount = inStat?._sum.amount?.toNumber() ?? 0;
+        const outAmount = outStat?._sum.amount?.toNumber() ?? 0;
 
         return {
-            category: cat, // Objeto {id, name}
-            total: parseFloat(totalIn) + parseFloat(totalOut), // Movimiento total
-            in: parseFloat(totalIn),
-            out: parseFloat(totalOut),
-            balance: parseFloat(totalIn) - parseFloat(totalOut) // Opcional: Neto
+            paymentMethod: method,
+            in: inAmount,
+            out: outAmount,
+            total: inAmount + outAmount,
+            netBalance: inAmount - outAmount,
+            transactions: (inStat?._count || 0) + (outStat?._count || 0)
         };
     });
 
+    // --- Procesar Categorías ---
+    const byCategory = categories.map(cat => {
+        const stats = categoryStats.filter(s => s.categoryId === cat.id);
+        const inStat = stats.find(s => s.type === 'IN');
+        const outStat = stats.find(s => s.type === 'OUT');
+
+        // [MODIFICADO] Uso de .toNumber() seguro
+        const inAmount = inStat?._sum.amount?.toNumber() ?? 0;
+        const outAmount = outStat?._sum.amount?.toNumber() ?? 0;
+
+        return {
+            category: cat,
+            total: inAmount + outAmount,
+            in: inAmount,
+            out: outAmount,
+            balance: inAmount - outAmount
+        };
+    });
+
+    // 5. Retorno Final
     return {
         summary: {
-            totalIn: parseFloat(totalIn._sum.amount || 0),
-            totalOut: parseFloat(totalOut._sum.amount || 0),
-            balance: parseFloat((totalIn._sum.amount || 0) - (totalOut._sum.amount || 0))
+            totalIn,
+            totalOut,
+            balance: totalIn - totalOut,
         },
         byPaymentMethod,
-        byCategory: groupedByCategory, // Ahora usas el array optimizado
+        byCategory,
     };
 };
 
@@ -146,10 +204,7 @@ export const getMoneyMovementById = async (companyId, movementId) => {
     return movement;
 };
 
-// ... imports
-
 export const updateMoneyMovement = async (companyId, movementId, data) => {
-    // 1. Buscar el movimiento
     const movement = await prisma.moneyMovement.findFirst({
         where: { id: movementId, companyId },
     });
@@ -158,18 +213,23 @@ export const updateMoneyMovement = async (companyId, movementId, data) => {
         throw new AppError('Movimiento de dinero no encontrado', 404);
     }
 
-    // --- PROTECCIÓN DE INTEGRIDAD ---
-    // Si el movimiento tiene un referenceType (SALE, ORDER, PURCHASE), 
-    // significa que fue creado por otro sistema. No se debe tocar directamente.
-    if (movement.referenceType && movement.referenceType !== 'OTHER') {
+    if (movement.referenceType) {
         throw new AppError(`No puedes editar manualmente un movimiento generado por una ${movement.referenceType}. Debes corregir la operación original.`, 403);
     }
-    // -------------------------------
 
     const updated = await prisma.moneyMovement.update({
         where: { id: movementId },
-        data: { /* ... */ }, // Igual que antes
-        include: { /* ... */ },
+        data: {
+            ...(data.type && { type: data.type }),
+            // [MODIFICADO] Se elimina parseFloat.
+            ...(data.amount && { amount: data.amount }),
+            ...(data.paymentMethod && { paymentMethod: data.paymentMethod }),
+            ...(data.description !== undefined && { description: data.description }),
+        },
+        include: {
+            category: { select: { id: true, name: true } },
+            createdBy: { select: { id: true, email: true } },
+        },
     });
 
     return updated;
@@ -182,12 +242,10 @@ export const deleteMoneyMovement = async (companyId, movementId) => {
 
     if (!movement) throw new AppError('Movimiento no encontrado', 404);
 
-    // --- PROTECCIÓN DE INTEGRIDAD ---
-    if (movement.referenceType && movement.referenceType !== 'OTHER') {
+    if (movement.referenceType) {
         throw new AppError(`No puedes eliminar un movimiento vinculado a una ${movement.referenceType}. Debes anular la Venta/Compra original.`, 403);
     }
-    // -------------------------------
-
+    
     await prisma.moneyMovement.delete({ where: { id: movementId } });
 
     return { message: 'Movimiento eliminado exitosamente' };

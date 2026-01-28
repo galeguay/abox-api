@@ -10,7 +10,7 @@ export const createMoneyMovementValidator = [
     .withMessage('amount debe ser mayor a 0'),
   body('paymentMethod')
     .notEmpty()
-    .isIn(['CASH', 'CARD', 'TRANSFER', 'VIRTUAL', 'CHECK', 'OTHER'])
+    .isIn(['CASH', 'CARD', 'TRANSFER', 'VIRTUAL', 'CHECK'])
     .withMessage('paymentMethod inválido'),
   body('categoryId')
     .optional()
@@ -26,7 +26,7 @@ export const createMoneyMovementValidator = [
     .withMessage('reference no puede exceder 100 caracteres'),
   body('referenceType')
     .optional()
-    .isIn(['SALE', 'ORDER', 'CASH_SESSION', 'PURCHASE', 'OTHER'])
+    .isIn(['SALE', 'ORDER', 'CASH_SESSION', 'PURCHASE'])
     .withMessage('referenceType inválido'),
 ];
 
@@ -41,7 +41,7 @@ export const updateMoneyMovementValidator = [
     .withMessage('amount debe ser mayor a 0'),
   body('paymentMethod')
     .optional()
-    .isIn(['CASH', 'CARD', 'TRANSFER', 'VIRTUAL', 'CHECK', 'OTHER'])
+    .isIn(['CASH', 'CARD', 'TRANSFER', 'VIRTUAL', 'CHECK'])
     .withMessage('paymentMethod inválido'),
   body('description')
     .optional()
@@ -64,7 +64,7 @@ export const listMoneyMovementsValidator = [
     .withMessage('type debe ser IN u OUT'),
   query('paymentMethod')
     .optional()
-    .isIn(['CASH', 'CARD', 'TRANSFER', 'VIRTUAL', 'CHECK', 'OTHER'])
+    .isIn(['CASH', 'CARD', 'TRANSFER', 'VIRTUAL', 'CHECK'])
     .withMessage('paymentMethod inválido'),
   query('categoryId')
     .optional()

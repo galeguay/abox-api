@@ -2,70 +2,72 @@ import asyncWrapper from '../../middlewares/asyncWrapper.js';
 import * as productsService from './products.service.js';
 
 export const createProduct = asyncWrapper(async (req, res) => {
-  const { companyId } = req.params;
-  const { name, sku } = req.body;
+    const { companyId } = req.params;
+    const { name, sku, price, categoryId, cost } = req.body;
 
-  const product = await productsService.createProduct(companyId, { name, sku });
+    const product = await productsService.createProduct(companyId, { name, sku, price, categoryId, cost });
 
-  res.status(201).json({
-    success: true,
-    message: 'Producto creado exitosamente',
-    data: product,
-  });
+    res.status(201).json({
+        success: true,
+        message: 'Producto creado exitosamente',
+        data: product,
+    });
 });
 
 export const getProducts = asyncWrapper(async (req, res) => {
-  const { companyId } = req.params;
-  const { page, limit, search, active } = req.query;
+    const { companyId } = req.params;
+    const { page, limit, search, active } = req.query;
 
-  const result = await productsService.getProducts(companyId, {
-    page: page ? parseInt(page) : 1,
-    limit: limit ? parseInt(limit) : 10,
-    search,
-    active: active === 'true',
-  });
+    const result = await productsService.getProducts(companyId, {
+        page: page ? parseInt(page) : 1,
+        limit: limit ? parseInt(limit) : 10,
+        search,
+        active: active === 'true',
+    });
 
-  res.json({
-    success: true,
-    ...result,
-  });
+    res.json({
+        success: true,
+        ...result,
+    });
 });
 
 export const getProductById = asyncWrapper(async (req, res) => {
-  const { companyId, id } = req.params;
+    const { companyId, id } = req.params;
 
-  const product = await productsService.getProductById(companyId, id);
+    const product = await productsService.getProductById(companyId, id);
 
-  res.json({
-    success: true,
-    data: product,
-  });
+    res.json({
+        success: true,
+        data: product,
+    });
 });
 
 export const updateProduct = asyncWrapper(async (req, res) => {
-  const { companyId, id } = req.params;
-  const { name, sku, active } = req.body;
+    const { companyId, id } = req.params;
+    const { name, sku, price, categoryId, cost } = req.body;
 
-  const product = await productsService.updateProduct(companyId, id, {
-    name,
-    sku,
-    active,
-  });
+    const product = await productsService.updateProduct(companyId, id, {
+        name,
+        sku,
+        price,
+        categoryId,
+        cost,
+    });
 
-  res.json({
-    success: true,
-    message: 'Producto actualizado exitosamente',
-    data: product,
-  });
+    res.json({
+        success: true,
+        message: 'Producto actualizado exitosamente',
+        data: product,
+    });
 });
 
 export const deleteProduct = asyncWrapper(async (req, res) => {
-  const { companyId, id } = req.params;
+    const { companyId, id } = req.params;
 
-  const result = await productsService.deleteProduct(companyId, id);
+    const result = await productsService.deleteProduct(companyId, id);
 
-  res.json({
-    success: true,
-    message: result.message,
-  });
+    res.json({
+        success: true,
+        message: result.message,
+    });
 });

@@ -33,15 +33,17 @@ export const createSaleValidator = [
         .optional()
         .isFloat({ min: 0 })
         .withMessage('El descuento general debe ser numérico'),
-    body('amountPaid')
+    body('payments')
         .optional()
-        .isFloat({ min: 0 })
-        .withMessage('El monto pagado debe ser numérico'),
-    body('paymentMethod')
-        .if(body('amountPaid').exists({ checkFalsy: true })) // Si mandan amountPaid > 0, exigimos método
+        .isArray({ min: 1 })
+        .withMessage('payments debe ser un array de pagos'),
+    body('payments.*.paymentMethod')
         .notEmpty()
-        .isIn(['CASH', 'CARD', 'TRANSFER', 'CHECK', 'QR', 'OTHER'])
+        .isIn(['CASH', 'CARD', 'TRANSFER', 'CHECK', 'VIRTUAL']) // Asegúrate que coincida con tu Schema
         .withMessage('Método de pago inválido'),
+    body('payments.*.amount')
+        .isFloat({ min: 0.01 })
+        .withMessage('El monto del pago debe ser mayor a 0'),
     body('updateStock')
         .optional()
         .isBoolean()
@@ -77,7 +79,6 @@ export const listSalesValidator = [
 
 export const cancelSaleValidator = [
     param('id').isUUID().withMessage('ID de venta inválido'),
-    // Opcional: permitir enviar warehouseId manualmente si la venta no lo tuviera registrado
     body('warehouseId')
         .optional()
         .isUUID()

@@ -1,613 +1,521 @@
-import { Prisma } from '@prisma/client';
+import { 
+    Prisma, 
+    OrderStatus, 
+    PaymentStatus, 
+    PaymentMethod,
+    MovementType,
+    MoneyReferenceType,
+    StockReferenceType
+} from '@prisma/client';
 import prisma from '../../../prisma/client.js';
 import { AppError } from '../../errors/index.js';
 import * as stockService from '../stock/stock.service.js';
 import * as salesService from '../sales/sales.service.js';
 
 // ==========================================
-// 1. CREACIÓN Y LECTURA
+// 1. CREACIÓN DE ORDEN (Con Precisión y Pagos Iniciales)
 // ==========================================
 
 export const createOrder = async (companyId, userId, data) => {
-    // Ahora extraemos y validamos warehouseId (Opción 3 de arquitectura)
-    const { customerId, items, deliveryZoneId, warehouseId, discount = 0, deliveryFee: manualDeliveryFee, notes } = data;
+    const { 
+        customerId, items, deliveryZoneId, warehouseId, 
+        discount = 0, deliveryFee = 0, notes,
+        payments = [] // Array de pagos iniciales (seña)
+    } = data;
 
-    if (!warehouseId) {
-        throw new AppError('El ID del almacén es obligatorio para crear la orden', 400);
-    }
-
-    // Validar almacén
+    // 1. Validaciones básicas
     const warehouse = await prisma.warehouse.findFirst({
-        where: { id: warehouseId, companyId, active: true },
+        where: { id: warehouseId, companyId, active: true }
     });
-    if (!warehouse) throw new AppError('Almacén no válido o inactivo', 404);
+    if (!warehouse) throw new AppError('Almacén no válido', 404);
 
-    // Validar productos
-    const productIds = items.map(item => item.productId);
+    // 2. Obtener productos y calcular stock
+    const itemsWithData = [];
+    let subtotal = new Prisma.Decimal(0);
+
+    // Optimizamos query de productos
+    const productIds = items.map(i => i.productId);
     const products = await prisma.product.findMany({
         where: { id: { in: productIds }, companyId },
         include: {
             costs: { orderBy: { createdAt: 'desc' }, take: 1 },
-            stocks: {
-                where: { warehouseId },
-                take: 1
-            }
+            stocks: { where: { warehouseId } }
         }
     });
 
-    if (products.length !== productIds.length) {
-        throw new AppError('Uno o más productos no existen en tu empresa', 404);
-    }
-
-    // Validar stock disponible en el almacén
-    items.forEach(item => {
+    for (const item of items) {
         const product = products.find(p => p.id === item.productId);
-        const currentStock = product.stocks[0]?.quantity || 0;
-        if (parseFloat(currentStock) < parseFloat(item.quantity)) {
+        if (!product) throw new AppError(`Producto no encontrado: ${item.productId}`, 404);
+
+        const currentStock = new Prisma.Decimal(product.stocks[0]?.quantity || 0);
+        const reqQty = new Prisma.Decimal(item.quantity);
+
+        if (currentStock.lt(reqQty)) {
             throw new AppError(`Stock insuficiente para: ${product.name}. Disponible: ${currentStock}`, 409);
         }
-    });
 
-    // Calcular totales
-    let subtotal = 0;
-    const itemsWithData = items.map(item => {
-        const product = products.find(p => p.id === item.productId);
-        const itemTotal = parseFloat(item.basePrice) * parseFloat(item.quantity);
-        subtotal += itemTotal;
+        // Precio: Prioridad al del item, sino al del producto
+        const basePrice = item.basePrice !== undefined 
+            ? new Prisma.Decimal(item.basePrice) 
+            : new Prisma.Decimal(product.price);
+        
+        const lineTotal = basePrice.mul(reqQty);
+        subtotal = subtotal.add(lineTotal);
 
-        // Obtenemos el último costo registrado para reportes de ganancia
-        const lastCost = product.costs?.[0]?.cost || 0;
+        itemsWithData.push({
+            productId: item.productId,
+            quantity: reqQty,
+            basePrice: basePrice,
+            price: lineTotal,
+            cost: new Prisma.Decimal(product.costs[0]?.cost || 0)
+        });
+    }
 
-        return {
-            ...item,
-            basePrice: parseFloat(item.basePrice),
-            quantity: parseFloat(item.quantity),
-            discount: item.discount ? parseFloat(item.discount) : 0,
-            price: itemTotal - (item.discount ? parseFloat(item.discount) : 0),
-            cost: parseFloat(lastCost),
-        };
-    });
+    // 3. Totales
+    const decDiscount = new Prisma.Decimal(discount);
+    const decDelivery = new Prisma.Decimal(deliveryFee);
+    
+    // Total = (Subtotal - Descuento) + Delivery
+    // Aseguramos que subtotal - descuento no sea negativo antes de sumar delivery
+    let taxableBase = subtotal.sub(decDiscount);
+    if (taxableBase.isNegative()) taxableBase = new Prisma.Decimal(0);
+    
+    const total = taxableBase.add(decDelivery);
 
-    subtotal = parseFloat(subtotal.toFixed(2));
-    const totalDiscount = parseFloat(discount);
+    // 4. Procesar Pagos Iniciales (Seña)
+    let initialPaid = new Prisma.Decimal(0);
+    const preparedPayments = [];
 
-    // Lógica de Delivery
-    let finalDeliveryFee = 0;
+    if (payments && Array.isArray(payments)) {
+        for (const p of payments) {
+            const amt = new Prisma.Decimal(p.amount);
+            initialPaid = initialPaid.add(amt);
+            preparedPayments.push({ ...p, amount: amt });
+        }
+    }
 
-    // Caso A: ¿Vino un precio manual? (Chequeamos undefined para permitir enviar 0)
-    if (manualDeliveryFee !== undefined && manualDeliveryFee !== null) {
-        finalDeliveryFee = parseFloat(manualDeliveryFee);
+    // Validar exceso de pago
+    if (initialPaid.gt(total)) throw new AppError('El pago inicial excede el total', 400);
 
-        // Opcional: Si mandan zona ID solo para registro, verificamos que exista, pero no cobramos su precio
-        if (deliveryZoneId) {
-            const zone = await prisma.deliveryZone.findUnique({ where: { id: deliveryZoneId } });
-            if (!zone) throw new AppError('Zona de delivery no válida', 404);
+    let paymentStatus = PaymentStatus.OPEN;
+    if (initialPaid.gte(total)) paymentStatus = PaymentStatus.PAID;
+    else if (initialPaid.gt(0)) paymentStatus = PaymentStatus.PENDING;
+
+    // 5. Transacción
+    return await prisma.$transaction(async (tx) => {
+        // A. Crear Orden
+        const order = await tx.order.create({
+            data: {
+                companyId,
+                createdById: userId,
+                warehouseId,
+                customerId: customerId || null,
+                deliveryZoneId: deliveryZoneId || null,
+                status: OrderStatus.PENDING,
+                paymentStatus,
+                subtotal,
+                discount: decDiscount,
+                deliveryFee: decDelivery,
+                total,
+                notes,
+                items: {
+                    create: itemsWithData.map(i => ({
+                        productId: i.productId,
+                        quantity: i.quantity,
+                        basePrice: i.basePrice,
+                        price: i.price,
+                        cost: i.cost
+                    }))
+                }
+            }
+        });
+
+        // B. Registrar Pagos y Caja
+        for (const p of preparedPayments) {
+            await tx.orderPayment.create({
+                data: {
+                    orderId: order.id,
+                    amount: p.amount,
+                    paymentMethod: p.paymentMethod,
+                    reference: p.reference
+                }
+            });
+
+            await tx.moneyMovement.create({
+                data: {
+                    companyId,
+                    type: MovementType.IN,
+                    amount: p.amount,
+                    paymentMethod: p.paymentMethod,
+                    referenceType: MoneyReferenceType.ORDER,
+                    referenceId: order.id,
+                    description: `Orden #${order.id.slice(0, 8)} (Seña)`,
+                    createdById: userId
+                }
+            });
         }
 
-    }
-    // Caso B: No hay precio manual, pero hay Zona
-    else if (deliveryZoneId) {
-        const zone = await prisma.deliveryZone.findUnique({ where: { id: deliveryZoneId } });
-        if (!zone) throw new AppError('Zona de delivery no válida', 404);
-
-        finalDeliveryFee = parseFloat(zone.price);
-    }
-
-    const total = parseFloat((subtotal - totalDiscount + finalDeliveryFee).toFixed(2));
-
-    // Crear orden
-    const order = await prisma.order.create({
-        data: {
+        // C. Reservar Stock
+        await stockService.registerStockExit(
             companyId,
-            createdById: userId,
             warehouseId,
-            customerId: customerId || null,
-            status: 'PENDING',
-            subtotal,
-            discount: totalDiscount,
-            total,
-            deliveryZoneId: deliveryZoneId || null,
-            deliveryFee: finalDeliveryFee,
-            paymentStatus: 'OPEN',
-            notes,
-            items: {
-                create: itemsWithData,
-            },
-        },
-        include: {
-            items: {
-                include: { product: { select: { id: true, name: true, sku: true } } },
-            },
-            createdBy: { select: { id: true, email: true } },
-            customer: { select: { id: true, name: true } },
-            warehouse: { select: { id: true, name: true } },
-        },
-    });
+            itemsWithData.map(i => ({ productId: i.productId, quantity: i.quantity })),
+            order.id,
+            userId,
+            tx,
+            StockReferenceType.ORDER_RESERVATION
+        );
 
-    return order;
+        return order;
+    });
 };
 
+// ==========================================
+// 2. AGREGAR PAGOS (Soporte Mixto)
+// ==========================================
+
+export const addOrderPayment = async (companyId, orderId, data, userId) => {
+    // Normalizar input: puede venir array 'payments' o campos sueltos
+    let incomingPayments = [];
+    if (data.payments && Array.isArray(data.payments)) {
+        incomingPayments = data.payments;
+    } else if (data.amount && data.paymentMethod) {
+        incomingPayments = [{ ...data }];
+    }
+
+    if (incomingPayments.length === 0) throw new AppError('No se indicaron pagos', 400);
+
+    return await prisma.$transaction(async (tx) => {
+        const order = await tx.order.findFirst({
+            where: { id: orderId, companyId },
+            include: { payments: true }
+        });
+
+        if (!order) throw new AppError('Orden no encontrada', 404);
+        if (order.status === OrderStatus.CANCELED) throw new AppError('Orden cancelada', 400);
+
+        // Calcular pagado hasta ahora
+        const previouslyPaid = order.payments.reduce((acc, p) => acc.add(new Prisma.Decimal(p.amount)), new Prisma.Decimal(0));
+        const orderTotal = new Prisma.Decimal(order.total);
+        
+        let newPaymentsTotal = new Prisma.Decimal(0);
+        const paymentsToInsert = [];
+
+        for (const p of incomingPayments) {
+            const amt = new Prisma.Decimal(p.amount);
+            newPaymentsTotal = newPaymentsTotal.add(amt);
+            paymentsToInsert.push({
+                amount: amt,
+                paymentMethod: p.paymentMethod,
+                reference: p.reference
+            });
+        }
+
+        const totalAfterPay = previouslyPaid.add(newPaymentsTotal);
+
+        if (totalAfterPay.gt(orderTotal)) {
+            throw new AppError(`El monto excede el total pendiente (${orderTotal.sub(previouslyPaid)})`, 400);
+        }
+
+        const createdPayments = [];
+        for (const p of paymentsToInsert) {
+            const pay = await tx.orderPayment.create({
+                data: {
+                    orderId,
+                    amount: p.amount,
+                    paymentMethod: p.paymentMethod,
+                    reference: p.reference
+                }
+            });
+            createdPayments.push(pay);
+
+            await tx.moneyMovement.create({
+                data: {
+                    companyId,
+                    type: MovementType.IN,
+                    amount: p.amount,
+                    paymentMethod: p.paymentMethod,
+                    referenceType: MoneyReferenceType.ORDER,
+                    referenceId: orderId,
+                    description: `Cobro Orden #${order.id.slice(0, 8)}`,
+                    createdById: userId
+                }
+            });
+        }
+
+        // Actualizar Estado
+        let newStatus = PaymentStatus.PENDING;
+        if (totalAfterPay.gte(orderTotal)) newStatus = PaymentStatus.PAID;
+
+        await tx.order.update({
+            where: { id: orderId },
+            data: { paymentStatus: newStatus }
+        });
+
+        // AUTO-GENERAR VENTA si la orden ya fue entregada y ahora se completa el pago
+        if (newStatus === PaymentStatus.PAID && order.status === OrderStatus.DELIVERED) {
+            const existingSale = await tx.sale.findFirst({ where: { orderId } });
+            if (!existingSale) {
+                await salesService.createSaleFromOrder(orderId, tx);
+            }
+        }
+
+        return createdPayments;
+    });
+};
+
+// ==========================================
+// 3. ACTUALIZACIÓN DE ORDEN (Con Decimal)
+// ==========================================
+
+// ==========================================
+// 3. ACTUALIZACIÓN DE ORDEN (Completo)
+// ==========================================
+
+export const updateOrder = async (companyId, orderId, userId, data) => {
+    const { items, discount, deliveryFee, notes } = data;
+
+    return await prisma.$transaction(async (tx) => {
+        // 1. Obtener la orden actual con sus items
+        const oldOrder = await tx.order.findUnique({
+            where: { id: orderId },
+            include: { items: true }
+        });
+
+        if (!oldOrder || oldOrder.companyId !== companyId) {
+            throw new AppError('Orden no encontrada', 404);
+        }
+
+        // Solo permitimos editar si está PENDING (ni confirmada, ni enviada)
+        if (oldOrder.status !== OrderStatus.PENDING) {
+            throw new AppError('Solo se pueden editar órdenes en estado PENDING', 400);
+        }
+
+        // 2. DEVOLVER STOCK PREVIO (Revertir reserva anterior)
+        // Esto "libera" el stock para que pueda ser usado en el recálculo
+        const oldStockItems = oldOrder.items.map(i => ({
+            productId: i.productId,
+            quantity: i.quantity // Prisma lo maneja, pero si es Decimal viene como objeto
+        }));
+
+        await stockService.registerStockEntry(
+            companyId,
+            oldOrder.warehouseId,
+            oldStockItems,
+            oldOrder.id,
+            userId,
+            tx,
+            StockReferenceType.ORDER_RESERVATION
+        );
+
+        // 3. PREPARAR NUEVOS ITEMS Y CALCULAR
+        // Buscamos los productos nuevos para obtener precio actual y costo
+        const productIds = items.map(i => i.productId);
+        const products = await tx.product.findMany({
+            where: { id: { in: productIds }, companyId },
+            include: {
+                costs: { orderBy: { createdAt: 'desc' }, take: 1 },
+                // Importante: Consultamos el stock "dentro" de la transacción.
+                // Al haber llamado a registerStockEntry arriba (dentro de la misma tx),
+                // el stock que lea aquí YA INCLUYE la devolución.
+                stocks: { where: { warehouseId: oldOrder.warehouseId } }
+            }
+        });
+
+        if (products.length !== productIds.length) {
+            throw new AppError('Uno o más productos no existen', 404);
+        }
+
+        let newSubtotal = new Prisma.Decimal(0);
+        const newItemsData = [];
+
+        for (const item of items) {
+            const product = products.find(p => p.id === item.productId);
+            
+            // Cantidad solicitada
+            const reqQty = new Prisma.Decimal(item.quantity);
+            
+            // Stock disponible (ya sumado lo devuelto)
+            const currentStock = new Prisma.Decimal(product.stocks[0]?.quantity || 0);
+
+            if (currentStock.lt(reqQty)) {
+                throw new AppError(`Stock insuficiente para ${product.name} (Disponible: ${currentStock})`, 409);
+            }
+
+            // Precios
+            const basePrice = item.basePrice !== undefined 
+                ? new Prisma.Decimal(item.basePrice) 
+                : new Prisma.Decimal(product.price);
+            
+            const lineTotal = basePrice.mul(reqQty);
+            const cost = new Prisma.Decimal(product.costs[0]?.cost || 0);
+
+            newSubtotal = newSubtotal.add(lineTotal);
+
+            newItemsData.push({
+                productId: item.productId,
+                quantity: reqQty,
+                basePrice: basePrice,
+                price: lineTotal,
+                cost: cost
+            });
+        }
+
+        // 4. CALCULAR TOTALES FINALES
+        // Usamos los valores nuevos si vienen, o mantenemos los viejos si son undefined
+        const finalDiscount = discount !== undefined 
+            ? new Prisma.Decimal(discount) 
+            : new Prisma.Decimal(oldOrder.discount || 0);
+            
+        const finalDelivery = deliveryFee !== undefined 
+            ? new Prisma.Decimal(deliveryFee) 
+            : new Prisma.Decimal(oldOrder.deliveryFee || 0);
+
+        let taxableBase = newSubtotal.sub(finalDiscount);
+        if (taxableBase.isNegative()) taxableBase = new Prisma.Decimal(0);
+
+        const newTotal = taxableBase.add(finalDelivery);
+
+        // Validar que el nuevo total no sea menor a lo que YA pagó el cliente
+        // (Para evitar que la orden quede con saldo negativo a favor sin control)
+        const payments = await tx.orderPayment.findMany({ where: { orderId } });
+        const totalPaid = payments.reduce((acc, p) => acc.add(new Prisma.Decimal(p.amount)), new Prisma.Decimal(0));
+
+        // Actualizamos estado de pago según el nuevo total
+        let newPaymentStatus = PaymentStatus.PENDING;
+        if (totalPaid.gte(newTotal)) newPaymentStatus = PaymentStatus.PAID;
+
+        // 5. ACTUALIZAR ORDEN Y RESERVAR NUEVO STOCK
+        
+        // A. Registrar la SALIDA de stock nueva
+        const newStockExitItems = newItemsData.map(i => ({
+            productId: i.productId,
+            quantity: i.quantity
+        }));
+
+        await stockService.registerStockExit(
+            companyId,
+            oldOrder.warehouseId,
+            newStockExitItems,
+            oldOrder.id,
+            userId,
+            tx,
+            StockReferenceType.ORDER_RESERVATION
+        );
+
+        // B. Actualizar la tabla Order
+        const updatedOrder = await tx.order.update({
+            where: { id: orderId },
+            data: {
+                subtotal: newSubtotal,
+                discount: finalDiscount,
+                deliveryFee: finalDelivery,
+                total: newTotal,
+                paymentStatus: newPaymentStatus,
+                notes: notes !== undefined ? notes : oldOrder.notes,
+                // Lógica "Replace": Borramos items viejos y creamos nuevos
+                items: {
+                    deleteMany: {}, 
+                    create: newItemsData.map(i => ({
+                        productId: i.productId,
+                        quantity: i.quantity,
+                        basePrice: i.basePrice,
+                        price: i.price,
+                        cost: i.cost
+                    }))
+                }
+            },
+            include: { items: true }
+        });
+
+        return updatedOrder;
+    });
+};
+
+// ==========================================
+// 4. ESTADOS (Traffic Cop)
+// ==========================================
+
+export const updateOrderStatus = async (companyId, orderId, newStatus, userId) => {
+    return await prisma.$transaction(async (tx) => {
+        if (newStatus === OrderStatus.CONFIRMED) return await confirmOrder(tx, companyId, orderId);
+        if (newStatus === OrderStatus.CANCELED) return await cancelOrder(tx, companyId, orderId, userId);
+        return await updateStatusSimple(tx, companyId, orderId, newStatus);
+    });
+};
+
+// Helpers de estado (Actualizados con Enums)
+const confirmOrder = async (tx, companyId, orderId) => {
+    const order = await tx.order.findFirst({ where: { id: orderId, companyId } });
+    if (!order) throw new AppError('Orden no encontrada', 404);
+    if (order.status !== OrderStatus.PENDING) throw new AppError('Estado inválido', 409);
+    return await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CONFIRMED } });
+};
+
+const cancelOrder = async (tx, companyId, orderId, userId) => {
+    const order = await tx.order.findFirst({ where: { id: orderId, companyId }, include: { items: true } });
+    if (!order) throw new AppError('Orden no encontrada', 404);
+    if (order.status === OrderStatus.CANCELED) return order;
+
+    // Devolver stock
+    const stockItems = order.items.map(i => ({ productId: i.productId, quantity: i.quantity }));
+    await stockService.registerStockEntry(companyId, order.warehouseId, stockItems, order.id, userId, tx, StockReferenceType.ORDER_RESERVATION);
+
+    return await tx.order.update({ where: { id: orderId }, data: { status: OrderStatus.CANCELED } });
+};
+
+const updateStatusSimple = async (tx, companyId, orderId, status) => {
+    const order = await tx.order.findFirst({ where: { id: orderId, companyId } });
+    if (!order) throw new AppError('Orden no encontrada', 404);
+    
+    const updated = await tx.order.update({ where: { id: orderId }, data: { status } });
+
+    // Si se entrega y ya estaba pagada, se crea la venta
+    if (status === OrderStatus.DELIVERED && order.paymentStatus === PaymentStatus.PAID) {
+        const existingSale = await tx.sale.findFirst({ where: { orderId } });
+        if (!existingSale) await salesService.createSaleFromOrder(orderId, tx);
+    }
+    return updated;
+};
+
+// ==========================================
+// LECTURAS (Getters)
+// ==========================================
 export const getOrders = async (companyId, filters = {}) => {
+    // ... (Tu código actual está bien, solo asegúrate de no usar parseFloat en la respuesta si quieres strings precisos)
+    // Prisma devuelve Decimal como objeto o string según config.
+    // Sugiero dejarlo igual por ahora.
+    
+    // Solo corregir el filtro de status para usar Enum si es necesario, 
+    // pero Prisma acepta string si coincide con el Enum.
     const { page = 1, limit = 10, status, paymentStatus } = filters;
     const skip = (page - 1) * limit;
-
-    const where = {
-        companyId,
-        ...(status && { status }),
-        ...(paymentStatus && { paymentStatus }),
-    };
-
+    const where = { companyId, ...(status && { status }), ...(paymentStatus && { paymentStatus }) };
+    
     const [orders, total] = await Promise.all([
         prisma.order.findMany({
-            where,
-            skip,
-            take: limit,
-            orderBy: { createdAt: 'desc' },
+            where, skip, take: limit, orderBy: { createdAt: 'desc' },
             include: {
-                items: { select: { id: true, quantity: true, price: true } },
-                customer: { select: { id: true, name: true } },
-                createdBy: { select: { id: true, email: true } },
-                warehouse: { select: { name: true } }, // Útil para ver de dónde salió
-                _count: { select: { payments: true } },
-            },
+                items: true,
+                customer: { select: { name: true } },
+                warehouse: { select: { name: true } }
+            }
         }),
-        prisma.order.count({ where }),
+        prisma.order.count({ where })
     ]);
-
-    return {
-        data: orders.map(order => ({
-            ...order,
-            totalItems: order.items.reduce((sum, i) => sum + parseFloat(i.quantity), 0),
-        })),
-        pagination: {
-            page,
-            limit,
-            total,
-            pages: Math.ceil(total / limit),
-        },
-    };
+    return { data: orders, pagination: { page, limit, total, pages: Math.ceil(total/limit) } };
 };
 
 export const getOrderById = async (companyId, orderId) => {
     const order = await prisma.order.findFirst({
         where: { id: orderId, companyId },
         include: {
-            items: {
-                include: { product: { select: { id: true, name: true, sku: true } } },
-            },
-            payments: { orderBy: { createdAt: 'desc' } },
-            customer: { select: { id: true, name: true, email: true } },
-            createdBy: { select: { id: true, email: true } },
-            deliveryZone: { select: { id: true, name: true } },
-            warehouse: { select: { id: true, name: true } },
-        },
-    });
-
-    if (!order) {
-        throw new AppError('Orden no encontrada', 404);
-    }
-
-    const amountPaid = order.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-    const pendingPayment = parseFloat(order.total) - amountPaid;
-
-    return {
-        ...order,
-        amountPaid: parseFloat(amountPaid.toFixed(2)),
-        pendingPayment: parseFloat(pendingPayment.toFixed(2)),
-    };
-};
-
-// ==========================================
-// 2. GESTIÓN DE ESTADOS (TRAFFIC COP)
-// ==========================================
-export const updateOrderStatus = async (companyId, orderId, newStatus, userId) => {
-    return await prisma.$transaction(async (tx) => {
-
-        if (newStatus === 'CONFIRMED') {
-            return await confirmOrder(tx, companyId, orderId, userId);
+            items: { include: { product: true } },
+            payments: true,
+            customer: true,
+            warehouse: true
         }
-
-        if (newStatus === 'CANCELED') {
-            return await cancelOrder(tx, companyId, orderId, userId);
-        }
-
-        return await updateStatusSimple(tx, companyId, orderId, newStatus);
     });
-};
-
-// --- Lógica Interna: Confirmar (Descuenta Stock) ---
-const confirmOrder = async (tx, companyId, orderId, userId) => {
-    const order = await tx.order.findFirst({
-        where: { id: orderId, companyId },
-        include: { items: true }
-    });
-
     if (!order) throw new AppError('Orden no encontrada', 404);
-    if (order.status !== 'PENDING') throw new AppError('Solo órdenes pendientes pueden confirmarse', 409);
-
-    for (const item of order.items) {
-        const currentStock = await tx.stock.findUnique({
-            where: {
-                productId_warehouseId: {
-                    productId: item.productId,
-                    warehouseId: order.warehouseId
-                }
-            }
-        });
-
-        const stockAvailable = currentStock ? parseFloat(currentStock.quantity) : 0;
-        const required = parseFloat(item.quantity);
-
-        if (stockAvailable < required) {
-            throw new AppError(
-                `Stock insuficiente para confirmar: ${item.product?.name || 'Producto desconocido'}. ` +
-                `Disponible: ${stockAvailable}, Requerido: ${required}`,
-                409
-            );
-        }
-    }
-
-    const stockItems = order.items.map(i => ({
-        productId: i.productId,
-        quantity: i.quantity
-    }));
-
-    await stockService.registerStockExit(
-        companyId,
-        order.warehouseId,
-        stockItems,
-        order.id,
-        userId,
-        tx
-    );
-
-    return await tx.order.update({
-        where: { id: orderId },
-        data: { status: 'CONFIRMED' }
-    });
-};
-
-
-// --- Lógica Interna: Cancelar (Devuelve Stock si es necesario) ---
-const cancelOrder = async (tx, companyId, orderId, userId) => {
-    const order = await tx.order.findFirst({
-        where: { id: orderId, companyId },
-        include: { items: true }
-    });
-
-    if (!order) throw new AppError('Orden no encontrada', 404);
-    if (order.status === 'CANCELED') throw new AppError('La orden ya está cancelada', 409);
-
-    const stockWasDeducted = ['CONFIRMED', 'PREPARING', 'READY', 'DELIVERED'].includes(order.status);
-
-    if (stockWasDeducted) {
-        const stockItems = order.items.map(i => ({
-            productId: i.productId,
-            quantity: i.quantity
-        }));
-
-        await stockService.registerStockEntry(
-            companyId,
-            order.warehouseId,
-            stockItems,
-            order.id,
-            userId,
-            tx
-        );
-    }
-
-    return await tx.order.update({
-        where: { id: orderId },
-        data: { status: 'CANCELED' }
-    });
-};
-
-// --- Lógica Interna: Updates Simples ---
-const updateStatusSimple = async (tx, companyId, orderId, status) => {
-    const order = await tx.order.findFirst({
-        where: { id: orderId, companyId }
-    });
-
-    if (!order) throw new AppError('Orden no encontrada', 404);
-
-    if (order.status === 'PENDING') {
-        throw new AppError('Debes confirmar la orden antes de cambiar a preparación o entrega', 400);
-    }
-
-    if (order.status === 'CANCELED') {
-        throw new AppError('No se puede cambiar el estado de una orden cancelada', 400);
-    }
-
-    const updatedOrder = await tx.order.update({
-        where: { id: orderId },
-        data: { status }
-    });
-
-    // Crear venta solo una vez
-    if (status === 'DELIVERED' && order.paymentStatus === 'PAID') {
-        const existingSale = await tx.sale.findFirst({ where: { orderId } });
-        if (!existingSale) {
-            await salesService.createSaleFromOrder(orderId, tx);
-        }
-    }
-
-    return updatedOrder;
-};
-
-// ==========================================
-// 3. GESTIÓN DE ITEMS Y PAGOS
-// ==========================================
-
-export const addOrderItem = async (companyId, orderId, itemData) => {
-    const { productId, quantity, basePrice } = itemData;
-
-    return await prisma.$transaction(async (tx) => {
-
-        const order = await tx.order.findFirst({
-            where: { id: orderId, companyId },
-        });
-
-        if (!order) throw new AppError('Orden no encontrada', 404);
-        if (order.status !== 'PENDING') {
-            throw new AppError('Solo se pueden agregar items a órdenes pendientes', 409);
-        }
-        if (order.paymentStatus === 'PAID') {
-            throw new AppError(
-                'No se pueden agregar items a una orden que ya fue pagada.',
-                409
-            );
-        }
-
-        const product = await tx.product.findFirst({
-            where: { id: productId, companyId },
-            include: { costs: { orderBy: { createdAt: 'desc' }, take: 1 } }
-        });
-
-        if (!product) throw new AppError('Producto no encontrado', 404);
-
-        const qty = parseFloat(quantity);
-        const price = parseFloat(basePrice);
-        const itemPrice = qty * price;
-        const cost = product.costs?.[0]?.cost || 0;
-
-        const item = await tx.orderItem.create({
-            data: {
-                orderId,
-                productId,
-                quantity: qty,
-                basePrice: price,
-                price: itemPrice,
-                cost: parseFloat(cost),
-            },
-            include: { product: { select: { id: true, name: true, sku: true } } },
-        });
-
-        const newSubtotal = parseFloat(order.subtotal) + itemPrice;
-        const newTotal =
-            newSubtotal -
-            parseFloat(order.discount || 0) +
-            parseFloat(order.deliveryFee || 0);
-
-        await tx.order.update({
-            where: { id: orderId },
-            data: {
-                subtotal: newSubtotal,
-                total: Math.max(newTotal, 0),
-            },
-        });
-
-        await recalculatePaymentStatus(tx, orderId, Math.max(newTotal, 0));
-
-        return item;
-    });
-};
-
-export const deleteOrderItem = async (companyId, orderId, itemId) => {
-    const order = await prisma.order.findFirst({
-        where: { id: orderId, companyId },
-    });
-
-    if (!order) throw new AppError('Orden no encontrada', 404);
-
-    if (order.status !== 'PENDING') {
-        throw new AppError('Solo se pueden eliminar items de órdenes pendientes', 409);
-    }
-
-    if (order.paymentStatus === 'PAID') {
-        throw new AppError('No se pueden eliminar items de una orden pagada. Esto generaría una inconsistencia financiera.', 409);
-    }
-
-    const item = await prisma.orderItem.findFirst({
-        where: { id: itemId, orderId },
-    });
-
-    if (!item) throw new AppError('Item no encontrado', 404);
-
-    await prisma.orderItem.delete({ where: { id: itemId } });
-
-    // Actualizar totales
-    const newSubtotal = parseFloat(order.subtotal) - parseFloat(item.price);
-    const newTotal = newSubtotal - parseFloat(order.discount || 0) + parseFloat(order.deliveryFee || 0);
-
-    // CORRECCIÓN: Usar transacción implicita o pasar prisma
-    await prisma.$transaction(async (tx) => {
-        await tx.order.update({
-            where: { id: orderId },
-            data: { subtotal: newSubtotal, total: Math.max(newTotal, 0) },
-        });
-        // IMPORTANTE: Recalcular si ahora está pagada
-        await recalculatePaymentStatus(tx, orderId, Math.max(newTotal, 0));
-    });
-
-    return { message: 'Item eliminado exitosamente' };
-};
-
-export const addOrderPayment = async (companyId, orderId, paymentData, userId) => {
-    const { amount, paymentMethod, reference } = paymentData;
-
-    // Iniciamos una transacción para que todo ocurra o nada ocurra
-    return await prisma.$transaction(async (tx) => {
-        // 1. Buscamos la orden DENTRO de la transacción
-        const order = await tx.order.findFirst({
-            where: { id: orderId, companyId },
-            include: { payments: true },
-        });
-
-        if (!order) throw new AppError('Orden no encontrada', 404);
-
-        const paymentAmount = new Prisma.Decimal(amount); // Usamos Decimal para evitar errores
-
-        // Calculamos cuánto lleva pagado (sumando lo anterior + lo actual)
-        const currentPaid = order.payments.reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0));
-        const totalPaid = currentPaid.plus(paymentAmount);
-        const orderTotal = new Prisma.Decimal(order.total);
-
-        // Validación: No pagar de más (opcional, depende de tu negocio)
-        if (totalPaid.greaterThan(orderTotal)) {
-            throw new AppError(`El monto excede el total de la orden`, 409);
-        }
-
-        // 2. Crear el registro del Pago de la Orden
-        const payment = await tx.orderPayment.create({
-            data: {
-                orderId,
-                amount: paymentAmount,
-                paymentMethod,
-                reference: reference || null,
-            },
-        });
-
-        // 3. Crear el Movimiento de Caja (MoneyMovement)
-        // Esto asegura que la plata aparezca en tus reportes financieros
-        await tx.moneyMovement.create({
-            data: {
-                companyId,
-                type: 'IN', // Es un ingreso
-                amount: paymentAmount,
-                paymentMethod,
-                referenceType: 'ORDER', // Según tu Schema 
-                referenceId: orderId,
-                description: `Cobro Orden #${order.id.split('-')[0]}`, // Descripción corta
-                createdById: userId, // Importante registrar quién cobró
-                createdAt: new Date(),
-                // categoryId: ... Aquí podrías buscar una categoría por defecto "Ventas" si quisieras
-            },
-        });
-
-        // 4. Actualizar estado de la orden
-        let paymentStatus = 'PENDING';
-
-        // Usamos una pequeña tolerancia (epsilon) para comparaciones decimales o comparación directa
-        if (totalPaid.greaterThanOrEqualTo(orderTotal)) {
-            paymentStatus = 'PAID';
-        }
-
-        await tx.order.update({
-            where: { id: orderId },
-            data: { paymentStatus },
-        });
-
-        if (paymentStatus === 'PAID' && order.status === 'DELIVERED') {
-
-            const existingSale = await tx.sale.findFirst({ where: { orderId } });
-
-            if (!existingSale) {
-                await salesService.createSaleFromOrder(orderId, tx);
-            }
-        }
-
-        return payment;
-    });
-};
-
-export const updateOrderDetails = async (companyId, orderId, data) => {
-    const { deliveryFee, discount, notes } = data;
-
-    return await prisma.$transaction(async (tx) => {
-        const order = await tx.order.findFirst({ where: { id: orderId, companyId } });
-        if (!order) throw new AppError('Orden no encontrada', 404);
-
-        if (order.status === 'CANCELED') {
-            throw new AppError('No se puede editar una orden cancelada', 400);
-        }
-
-        if (order.status !== 'PENDING') {
-            const isTryingToChangeNonNotes =
-                deliveryFee !== undefined || discount !== undefined;
-
-            if (isTryingToChangeNonNotes) {
-                throw new AppError(
-                    'Solo se pueden modificar las notas si la orden no está pendiente',
-                    403
-                );
-            }
-        }
-
-        if (order.paymentStatus === 'PAID') {
-            // Verificamos si intentan cambiar algo financiero (deliveryFee o discount)
-            const isTryingToChangeFinancials = (deliveryFee !== undefined) || (discount !== undefined);
-
-            if (isTryingToChangeFinancials) {
-                throw new AppError('La orden está pagada. Solo puedes modificar las notas, no los montos.', 403);
-            }
-        }
-
-        let newTotal = undefined; // Solo calculamos si hay cambios financieros
-
-        // Si NO está pagada y mandaron cambios financieros, recalculamos
-        if (order.paymentStatus !== 'PAID' && (deliveryFee !== undefined || discount !== undefined)) {
-            const finalDeliveryFee = deliveryFee !== undefined ? new Prisma.Decimal(deliveryFee) : new Prisma.Decimal(order.deliveryFee || 0);
-            const finalDiscount = discount !== undefined ? new Prisma.Decimal(discount) : new Prisma.Decimal(order.discount || 0);
-
-            newTotal = new Prisma.Decimal(order.subtotal)
-                .minus(finalDiscount)
-                .plus(finalDeliveryFee);
-
-            if (newTotal.isNegative()) throw new AppError('El total no puede ser negativo', 400);
-        }
-
-        // Ejecutar Update
-        const updatedOrder = await tx.order.update({
-            where: { id: orderId },
-            data: {
-                // Si mandaron el dato, lo usamos. Si no, undefined (Prisma lo ignora)
-                deliveryFee: deliveryFee !== undefined ? deliveryFee : undefined,
-                discount: discount !== undefined ? discount : undefined,
-                total: newTotal, // Se actualiza solo si recalculamos
-                notes: notes !== undefined ? notes : undefined // Notas siempre pasan
-            }
-        });
-
-        // Si cambió el total, hay que verificar si el pago parcial ahora cubre todo (Recalculation Trigger)
-        if (newTotal) {
-            await recalculatePaymentStatus(tx, orderId, newTotal);
-        }
-
-        return updatedOrder;
-    });
-};
-
-const recalculatePaymentStatus = async (tx, orderId, currentTotal) => {
-    // 1. Sumar todo lo pagado
-    const paymentAgg = await tx.orderPayment.aggregate({
-        where: { orderId },
-        _sum: { amount: true }
-    });
-
-    const totalPaid = new Prisma.Decimal(paymentAgg._sum.amount || 0);
-    const totalOrder = new Prisma.Decimal(currentTotal);
-
-    let newStatus = 'OPEN';
-
-    if (totalPaid.greaterThanOrEqualTo(totalOrder)) {
-        newStatus = 'PAID';
-    } else if (totalPaid.greaterThan(0)) {
-        newStatus = 'PENDING';
-    }
-
-    // 2. Actualizar
-    await tx.order.update({
-        where: { id: orderId },
-        data: { paymentStatus: newStatus }
-    });
+    return order;
 };

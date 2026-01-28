@@ -1,3 +1,6 @@
+import {
+    StockReferenceType
+} from '@prisma/client';
 import prisma from '../../../prisma/client.js';
 import { AppError } from '../../errors/index.js';
 import * as movementService from '../stock-movements/stock-movements.service.js';
@@ -7,41 +10,63 @@ import * as movementService from '../stock-movements/stock-movements.service.js'
 // ==========================================
 
 /**
- * Actualiza el saldo Y registra el movimiento.
- * Esta es la función que usan todos los métodos públicos.
+ * Actualiza el saldo de manera atómica y segura.
+ * Garantiza que el stock NUNCA baje de 0 en operaciones de salida.
  */
 const processStockChange = async (params, tx) => {
-    const { 
-        companyId, warehouseId, productId, type, quantity, 
-        referenceType, referenceId, notes, userId 
+    const {
+        companyId, warehouseId, productId, type, quantity,
+        referenceType, referenceId, notes, userId
     } = params;
 
     const qty = parseFloat(quantity);
     if (qty <= 0) return;
 
-    // 1. Delegar el log al servicio de movimientos
+    // 1. Validación Estricta de Tipos
+    if (type !== 'IN' && type !== 'OUT') {
+        throw new AppError(`Tipo de movimiento inválido: ${type}. Use IN o OUT.`, 500);
+    }
+
+    // 2. Delegar el log al servicio de movimientos
     await movementService.logStockMovement({
         companyId, warehouseId, productId, type, quantity: qty,
         referenceType, referenceId, notes, userId
     }, tx);
 
-    // 2. Calcular impacto en el saldo (Lógica de negocio)
-    let increment = 0;
-    if (type === 'IN' || type === 'ADJUST') increment = qty; // Asumiendo ADJUST positivo
-    if (type === 'OUT') increment = -qty;
+    // 3. Actualización Atómica de Saldos
+    if (type === 'OUT') {
+        // SEGURIDAD CRÍTICA: "Optimistic Locking"
+        // Solo actualiza si la cantidad actual (quantity) es mayor o igual (gte) a la que queremos sacar (qty)
+        const result = await tx.stock.updateMany({
+            where: {
+                productId,
+                warehouseId,
+                quantity: { gte: qty }
+            },
+            data: {
+                quantity: { decrement: qty }
+            }
+        });
 
-    // 3. Actualizar tabla de Saldos (Stock)
-    await tx.stock.upsert({
-        where: {
-            productId_warehouseId: { productId, warehouseId },
-        },
-        update: { quantity: { increment } },
-        create: {
-            productId,
-            warehouseId,
-            quantity: increment, // Si no existía, empieza con esto
-        },
-    });
+        // Si count es 0, significa que no cumplió la condición (no había suficiente stock)
+        if (result.count === 0) {
+            throw new AppError(`Stock insuficiente para el producto ${productId}. Movimiento rechazado.`, 409);
+        }
+
+    } else {
+        // Caso 'IN' (Entrada): Upsert seguro
+        await tx.stock.upsert({
+            where: {
+                productId_warehouseId: { productId, warehouseId },
+            },
+            update: { quantity: { increment: qty } }, // Suma atómica
+            create: {
+                productId,
+                warehouseId,
+                quantity: qty, // Valor inicial si no existe
+            },
+        });
+    }
 };
 
 // ==========================================
@@ -56,26 +81,18 @@ export const transferStock = async (companyId, data, userId) => {
     }
 
     return await prisma.$transaction(async (tx) => {
-        // Validar Stock
-        const fromStock = await tx.stock.findUnique({
-            where: { productId_warehouseId: { productId, warehouseId: fromWarehouseId } }
-        });
-
-        if (!fromStock || Number(fromStock.quantity) < quantity) {
-            throw new AppError('Stock insuficiente', 409);
-        }
 
         // Registrar SALIDA Origen
         await processStockChange({
             companyId, warehouseId: fromWarehouseId, productId,
-            type: 'OUT', quantity, referenceType: 'TRANSFER', referenceId: toWarehouseId,
+            type: 'OUT', quantity, referenceType: StockReferenceType.TRANSFER, referenceId: toWarehouseId,
             notes: notes || 'Salida por transferencia', userId
         }, tx);
 
         // Registrar ENTRADA Destino
         await processStockChange({
             companyId, warehouseId: toWarehouseId, productId,
-            type: 'IN', quantity, referenceType: 'TRANSFER', referenceId: fromWarehouseId,
+            type: 'IN', quantity, referenceType: StockReferenceType.TRANSFER, referenceId: fromWarehouseId,
             notes: notes || 'Entrada por transferencia', userId
         }, tx);
 
@@ -87,31 +104,44 @@ export const createManualAdjustment = async (companyId, data, userId) => {
     const { productId, warehouseId, type, quantity, notes } = data;
 
     return await prisma.$transaction(async (tx) => {
-        if (type === 'OUT') {
-            const currentStock = await tx.stock.findUnique({
-                where: { productId_warehouseId: { productId, warehouseId } }
-            });
-            if (!currentStock || Number(currentStock.quantity) < quantity) {
-                throw new AppError('Stock insuficiente', 409);
-            }
-        }
 
         await processStockChange({
             companyId, warehouseId, productId, type, quantity,
-            referenceType: 'ADJUSTMENT', referenceId: null, notes, userId
+            referenceType: StockReferenceType.ADJUSTMENT, referenceId: null, notes, userId
         }, tx);
 
         return { message: 'Ajuste realizado' };
     });
 };
 
-// Helpers para Ventas y Compras (Ahora exigen userId)
-export const registerStockExit = async (companyId, warehouseId, items, referenceId, userId, tx) => {
+export const registerStockExit = async (companyId, warehouseId, items, referenceId, userId, tx, referenceType = StockReferenceType.SALE) => {
+
+    // 1. Corrección: Validar contra el Enum real de Prisma
+    if (!Object.values(StockReferenceType).includes(referenceType)) {
+        throw new AppError(`Tipo de referencia de stock inválido: ${referenceType}`, 400);
+    }
+
     for (const item of items) {
+        // 2. Corrección: Generar notas dinámicas según el tipo
+        let dynamicNotes = '';
+        if (referenceType === StockReferenceType.SALE) {
+            dynamicNotes = `Venta #${referenceId.split('-')[0]}`;
+        } else if (referenceType === StockReferenceType.ORDER_RESERVATION) {
+            dynamicNotes = `Reserva de stock para Orden #${referenceId.split('-')[0]}`;
+        } else {
+            dynamicNotes = `Salida de stock (${referenceType})`;
+        }
+
         await processStockChange({
-            companyId, warehouseId, productId: item.productId,
-            type: 'OUT', quantity: item.quantity,
-            referenceType: 'SALE', referenceId, notes: null, userId
+            companyId,
+            warehouseId,
+            productId: item.productId,
+            type: 'OUT',
+            quantity: item.quantity,
+            referenceType: referenceType, // 3. Corrección: Usar el parámetro, no hardcodear
+            referenceId,
+            notes: dynamicNotes,
+            userId
         }, tx);
     }
 };
@@ -121,7 +151,7 @@ export const registerStockEntry = async (companyId, warehouseId, items, referenc
         await processStockChange({
             companyId, warehouseId, productId: item.productId,
             type: 'IN', quantity: item.quantity,
-            referenceType: 'PURCHASE', referenceId, notes: null, userId
+            referenceType: StockReferenceType.PURCHASE, referenceId, notes: null, userId
         }, tx);
     }
 };

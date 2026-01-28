@@ -10,7 +10,7 @@ export const createCategoryValidator = [
         .withMessage('El nombre no puede exceder 50 caracteres'),
     body('color')
         .optional()
-        .isString()
+        .matches(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
         .withMessage('El color debe ser un string (HEX o nombre)'),
 ];
 
@@ -23,7 +23,8 @@ export const updateCategoryValidator = [
         .trim(),
     body('color')
         .optional()
-        .isString(),
+        .matches(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
+        .withMessage('El color debe ser un string (HEX o nombre)'),
     body('active')
         .optional()
         .isBoolean()

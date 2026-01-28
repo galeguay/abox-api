@@ -9,13 +9,16 @@ datasource db {
 enum MovementType {
     IN
     OUT
-    ADJUST
-    TRANSFER
 }
 
 model Company {
     id        String   @id @default(uuid())
     name      String
+    taxId     String?  @unique // CUIT, RUT, NIT, etc.
+    email     String?
+    phone     String?
+    address   String?
+    logoUrl   String?
     active    Boolean  @default(true)
     config    Json?    @default("{}")
     createdAt DateTime @default(now())
@@ -46,6 +49,7 @@ model Company {
     salesByProducts     SalesByProduct[]
     salesByCategories   SalesByCategory[]
     saleCategories      SaleCategory[]
+    productPrices       ProductPrice[]
 }
 
 enum UserType {
@@ -90,7 +94,9 @@ model Product {
     sku       String?
     active    Boolean  @default(true)
     createdAt DateTime @default(now())
+    price     Decimal  @default(0)
 
+    prices        ProductPrice[]
     stocks        Stock[]
     movements     StockMovement[]
     costs         ProductCost[]
@@ -124,6 +130,20 @@ model ProductComponent {
     component Product @relation("ProductComponent", fields: [componentId], references: [id])
 
     @@unique([parentId, componentId])
+}
+
+model ProductPrice {
+    id        String   @id @default(uuid())
+    productId String
+    companyId String
+    price     Decimal
+    reason    String?
+    createdAt DateTime @default(now())
+
+    product Product @relation(fields: [productId], references: [id])
+    company Company @relation(fields: [companyId], references: [id])
+
+    @@index([productId])
 }
 
 model Warehouse {
@@ -162,6 +182,7 @@ enum StockReferenceType {
     PURCHASE
     ADJUSTMENT
     TRANSFER
+    ORDER_RESERVATION
 }
 
 model StockMovement {
@@ -173,7 +194,7 @@ model StockMovement {
     quantity      Decimal
     referenceType StockReferenceType?
     referenceId   String?
-    notes        String?
+    notes         String?
 
     createdAt   DateTime @default(now())
     createdById String?
@@ -315,10 +336,11 @@ model Sale {
     orderId        String?
     saleCategoryId String?
     status         SaleStatus @default(COMPLETED)
-    warehouseId    String?
-    notes String?
+    warehouseId    String
+    customerId     String?
+    notes          String?
 
-    warehouse     Warehouse?    @relation(fields: [warehouseId], references: [id])
+    warehouse     Warehouse     @relation(fields: [warehouseId], references: [id])
     order         Order?        @relation(fields: [orderId], references: [id])
     company       Company       @relation(fields: [companyId], references: [id])
     createdBy     User          @relation(fields: [createdById], references: [id])
@@ -326,6 +348,7 @@ model Sale {
     items         SaleItem[]
     payments      SalePayment[]
     saleCategory  SaleCategory? @relation(fields: [saleCategoryId], references: [id])
+    customer      Customer?     @relation(fields: [customerId], references: [id])
 
     @@index([createdAt])
     @@index([companyId, createdAt])
@@ -373,6 +396,7 @@ model Customer {
     active    Boolean @default(true)
 
     company Company @relation(fields: [companyId], references: [id])
+    sales   Sale[]
 
     @@index([companyId, active])
 }
@@ -399,7 +423,7 @@ model Order {
     total          Decimal
     deliveryZoneId String?
     warehouseId    String
-    notes String?
+    notes          String?
 
     warehouse     Warehouse     @relation(fields: [warehouseId], references: [id])
     company       Company       @relation(fields: [companyId], references: [id])
@@ -458,7 +482,7 @@ model Supplier {
     companyId String
     name      String
     active    Boolean @default(true)
-    notes String? @db.Text
+    notes     String? @db.Text
 
     purchases Purchase[]
     company   Company    @relation(fields: [companyId], references: [id])
@@ -483,7 +507,7 @@ model Purchase {
     createdAt   DateTime       @default(now())
     receivedAt  DateTime?
     warehouseId String
-        notes String? @db.Text
+    notes       String?        @db.Text
 
     warehouse Warehouse @relation(fields: [warehouseId], references: [id])
     company   Company   @relation(fields: [companyId], references: [id])

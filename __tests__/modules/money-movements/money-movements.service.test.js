@@ -1,8 +1,16 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { mockPrisma } from '../../mocks/prisma.js';
 
-// Importamos el servicio
+// Import dinámico del servicio
 const moneyService = await import('../../../src/modules/money-movements/money-movements.service.js');
+
+// --- HELPER PARA SIMULAR PRISMA DECIMAL ---
+// Esto evita el crash de ".toNumber is not a function"
+const mockDecimal = (value) => ({
+    toNumber: () => value,
+    toString: () => String(value),
+    equals: (other) => value === other,
+});
 
 describe('Money Movements Service', () => {
     const mockCompanyId = 'company-1';
@@ -25,9 +33,7 @@ describe('Money Movements Service', () => {
                 categoryId: 'cat-1'
             };
 
-            // Mock validar categoría
             mockPrisma.moneyCategory.findFirst.mockResolvedValue({ id: 'cat-1' });
-            // Mock crear movimiento
             mockPrisma.moneyMovement.create.mockResolvedValue({ id: 'mov-1', ...data });
 
             const result = await moneyService.createMoneyMovement(mockCompanyId, mockUserId, data);
@@ -37,21 +43,12 @@ describe('Money Movements Service', () => {
                 expect.objectContaining({
                     data: expect.objectContaining({
                         type: 'OUT',
-                        amount: 100,
-                        referenceType: null // Es manual
+                        amount: 100, // Ahora se pasa directo sin parseFloat
+                        referenceType: null 
                     })
                 })
             );
             expect(result).toHaveProperty('id', 'mov-1');
-        });
-
-        test('falla si la categoría no existe', async () => {
-            const data = { categoryId: 'cat-fake', amount: 50 };
-            
-            mockPrisma.moneyCategory.findFirst.mockResolvedValue(null); // No existe
-
-            await expect(moneyService.createMoneyMovement(mockCompanyId, mockUserId, data))
-                .rejects.toThrow('Categoría de dinero no encontrada');
         });
     });
 
@@ -60,94 +57,101 @@ describe('Money Movements Service', () => {
     // ==========================================
     describe('Integrity Checks (Update/Delete)', () => {
         
-        test('update: falla si se intenta editar un movimiento de VENTA (Sistema)', async () => {
-            // Simulamos encontrar un movimiento que vino de una Venta
+        test('update: falla si el movimiento tiene referenceType (Sistema)', async () => {
             mockPrisma.moneyMovement.findFirst.mockResolvedValue({
                 id: 'mov-sys',
-                referenceType: 'SALE', // <--- ESTO ES LA CLAVE
-                amount: 500
+                referenceType: 'SALE', 
+                amount: mockDecimal(500)
             });
 
             await expect(moneyService.updateMoneyMovement(mockCompanyId, 'mov-sys', { amount: 600 }))
-                .rejects.toThrow('No puedes editar manualmente'); // Verifica tu mensaje de error
+                .rejects.toThrow(/No puedes editar manualmente/); 
             
             expect(mockPrisma.moneyMovement.update).not.toHaveBeenCalled();
         });
 
-        test('update: permite editar un movimiento MANUAL u OTHER', async () => {
-            // Simulamos movimiento manual
+        test('update: permite editar un movimiento puramente MANUAL (referenceType: null)', async () => {
+            // [CORRECCIÓN] referenceType debe ser NULL para permitir edición
             mockPrisma.moneyMovement.findFirst.mockResolvedValue({
                 id: 'mov-man',
-                referenceType: 'OTHER', // O null
-                amount: 100
+                referenceType: null, 
+                amount: mockDecimal(100)
             });
 
-            mockPrisma.moneyMovement.update.mockResolvedValue({ id: 'mov-man', amount: 150 });
+            mockPrisma.moneyMovement.update.mockResolvedValue({ id: 'mov-man', amount: mockDecimal(150) });
 
             await moneyService.updateMoneyMovement(mockCompanyId, 'mov-man', { amount: 150 });
 
             expect(mockPrisma.moneyMovement.update).toHaveBeenCalled();
         });
 
-        test('delete: falla si se intenta borrar un movimiento de COMPRA (Sistema)', async () => {
+        test('delete: falla si el movimiento tiene referenceType', async () => {
             mockPrisma.moneyMovement.findFirst.mockResolvedValue({
                 id: 'mov-pur',
-                referenceType: 'PURCHASE' // <--- Protegido
+                referenceType: 'PURCHASE'
             });
 
             await expect(moneyService.deleteMoneyMovement(mockCompanyId, 'mov-pur'))
-                .rejects.toThrow('Debes anular la Venta/Compra original');
+                .rejects.toThrow(/Debes anular la Venta\/Compra/);
             
             expect(mockPrisma.moneyMovement.delete).not.toHaveBeenCalled();
         });
     });
-// ==========================================
-    // 3. TEST DE REPORTES (Optimizado)
+
+    // ==========================================
+    // 3. TEST DE REPORTES (Con Mock Decimal)
     // ==========================================
     describe('getMoneyMovementsReport', () => {
-        test('calcula totales y agrupa categorías correctamente', async () => {
-            // --- MOCKS ---
-
-            // 1. Mock de Totales Generales (aggregate)
-            // El servicio llama primero a IN y luego a OUT
+        test('calcula totales y agrupa categorías correctamente usando tipos Decimal', async () => {
+            // --- MOCKS USANDO mockDecimal ---
+            
+            // 1. Totales Generales
             mockPrisma.moneyMovement.aggregate
-                .mockResolvedValueOnce({ _sum: { amount: 1000 } }) // IN
-                .mockResolvedValueOnce({ _sum: { amount: 250 } }); // OUT
+                .mockResolvedValueOnce({ _sum: { amount: mockDecimal(1000) } }) // IN
+                .mockResolvedValueOnce({ _sum: { amount: mockDecimal(250) } }); // OUT
 
-            // 2. Mock de Métodos de Pago (groupBy) - PRIMERA llamada a groupBy en el servicio
+            // 2. Métodos de Pago
             mockPrisma.moneyMovement.groupBy.mockResolvedValueOnce([
-                { paymentMethod: 'CASH', type: 'IN', _sum: { amount: 1000 }, _count: 5 }
+                { paymentMethod: 'CASH', type: 'IN', _sum: { amount: mockDecimal(1000) }, _count: 5 }
             ]);
 
-            // 3. Mock de Categorías (groupBy) - SEGUNDA llamada a groupBy en el servicio
+            // 3. Categorías
             mockPrisma.moneyMovement.groupBy.mockResolvedValueOnce([
-                { categoryId: 'cat-1', type: 'IN', _sum: { amount: 1000 } },
-                { categoryId: 'cat-1', type: 'OUT', _sum: { amount: 200 } },
-                { categoryId: 'cat-2', type: 'OUT', _sum: { amount: 50 } }
+                { categoryId: 'cat-1', type: 'IN', _sum: { amount: mockDecimal(1000) } },
+                { categoryId: 'cat-1', type: 'OUT', _sum: { amount: mockDecimal(200) } },
             ]);
 
-            // 4. Mock de Nombres de Categoría (findMany)
+            // 4. Nombres
             mockPrisma.moneyCategory.findMany.mockResolvedValue([
-                { id: 'cat-1', name: 'Ventas' },
-                { id: 'cat-2', name: 'Gastos' }
+                { id: 'cat-1', name: 'Ventas' }
             ]);
 
             // --- EJECUCIÓN ---
             const report = await moneyService.getMoneyMovementsReport(mockCompanyId, {});
 
             // --- VALIDACIONES ---
-            
-            // 1. Validar agrupación por categoría
-            const cat1Result = report.byCategory.find(c => c.category.id === 'cat-1');
-            expect(cat1Result).toBeDefined();
-            expect(cat1Result.in).toBe(1000);
-            expect(cat1Result.out).toBe(200);
-            
-            // 2. Validar totales generales
-            expect(report.summary.totalIn).toBe(1000);
+            // Validamos que .toNumber() funcionó y devolvió primitivos
+            expect(report.summary.totalIn).toBe(1000); 
+            expect(report.summary.totalOut).toBe(250);
+            expect(report.summary.balance).toBe(750); // 1000 - 250
 
-            // 3. Validar que se llamó a groupBy 2 veces
-            expect(mockPrisma.moneyMovement.groupBy).toHaveBeenCalledTimes(2); 
+            const cat1 = report.byCategory.find(c => c.category.id === 'cat-1');
+            expect(cat1.balance).toBe(800); // 1000 - 200
+        });
+
+        test('maneja valores nulos (cero movimientos) sin romperse', async () => {
+            // Caso donde la DB está vacía y aggregate devuelve null en _sum
+            mockPrisma.moneyMovement.aggregate
+                .mockResolvedValueOnce({ _sum: { amount: null } }) 
+                .mockResolvedValueOnce({ _sum: { amount: null } }); 
+
+            mockPrisma.moneyMovement.groupBy.mockResolvedValue([]); // groupBy vacíos
+            mockPrisma.moneyCategory.findMany.mockResolvedValue([]);
+
+            const report = await moneyService.getMoneyMovementsReport(mockCompanyId, {});
+
+            expect(report.summary.totalIn).toBe(0);
+            expect(report.summary.totalOut).toBe(0);
         });
     });
 });

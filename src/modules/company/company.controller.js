@@ -2,62 +2,101 @@ import asyncWrapper from '../../middlewares/asyncWrapper.js';
 import * as companyService from './company.service.js';
 
 export const getMyCompanyProfile = asyncWrapper(async (req, res) => {
-  const { userId } = req.user;
-  const profile = await companyService.getMyCompanyProfile(userId);
+    const { userId } = req.user;
+    const profile = await companyService.getMyCompanyProfile(userId);
 
-  res.json({
-    success: true,
-    data: profile,
-  });
+    res.json({
+        success: true,
+        data: profile,
+    });
 });
 
 export const updateMyCompanyProfile = asyncWrapper(async (req, res) => {
-  const { userId, companyId } = req.user;
-  const { name, description, phone, email, address, city, state, zipCode, country } = req.body;
+    const { userId, companyId } = req.user;
 
-  const updated = await companyService.updateMyCompanyProfile(companyId, userId, {
-    name: name ?? undefined,
-  });
+    // 1. Extraemos TODOS los campos posibles del body
+    const {
+        // --- Columnas directas en el Schema ---
+        name,
+        taxId,      // [cite: 2]
+        email,
+        phone,      // [cite: 3]
+        address,
+        logoUrl,
+        
+        // --- Campos de configuración (van a JSON) ---
+        description,
+        city,
+        state,
+        zipCode,
+        country,
+        website
+    } = req.body;
 
-  res.json({
-    success: true,
-    message: 'Perfil de empresa actualizado exitosamente',
-    data: updated,
-  });
+    // 2. Preparamos el objeto para el servicio
+    const updateData = {
+        // Datos de columnas
+        name,
+        taxId,
+        email,
+        phone,
+        address,
+        logoUrl,
+        
+        // Agrupamos el resto en un objeto para merging del JSON
+        additionalConfig: {
+            description,
+            city,
+            state,
+            zipCode,
+            country,
+            website
+        }
+    };
+
+    const updated = await companyService.updateMyCompanyProfile(companyId, userId, updateData);
+
+    res.json({
+        success: true,
+        message: 'Perfil de empresa actualizado exitosamente',
+        data: updated,
+    });
 });
 
 export const getMyCompanyStats = asyncWrapper(async (req, res) => {
-  const { userId, companyId } = req.user;
-  const stats = await companyService.getMyCompanyStats(companyId, userId);
+    const { userId, companyId } = req.user;
+    const stats = await companyService.getMyCompanyStats(companyId, userId);
 
-  res.json({
-    success: true,
-    data: stats,
-  });
+    res.json({
+        success: true,
+        data: stats,
+    });
 });
 
 export const getMyCompanySettings = asyncWrapper(async (req, res) => {
-  const { userId, companyId } = req.user;
-  const settings = await companyService.getMyCompanySettings(companyId, userId);
+    const { userId, companyId } = req.user;
+    const settings = await companyService.getMyCompanySettings(companyId, userId);
 
-  res.json({
-    success: true,
-    data: settings,
-  });
+    res.json({
+        success: true,
+        data: settings,
+    });
 });
 
 export const updateMyCompanySettings = asyncWrapper(async (req, res) => {
-  const { userId, companyId } = req.user;
-  const { operationalHours, internalPolicies } = req.body;
+    const { userId, companyId } = req.user;
+    
+    // Aquí recibimos objetos complejos (arrays u objetos anidados)
+    const { operationalHours, internalPolicies } = req.body;
 
-  const updated = await companyService.updateMyCompanySettings(companyId, userId, {
-    operationalHours: operationalHours ?? undefined,
-    internalPolicies: internalPolicies ?? undefined,
-  });
+    const updatedConfig = await companyService.updateMyCompanySettings(companyId, userId, {
+        operationalHours,
+        internalPolicies
+    });
 
-  res.json({
-    success: true,
-    message: 'Configuración de empresa actualizada exitosamente',
-    data: updated,
-  });
+    res.json({
+        success: true,
+        message: 'Configuración de empresa actualizada exitosamente',
+        data: updatedConfig,
+    });
 });

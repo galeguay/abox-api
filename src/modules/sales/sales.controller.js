@@ -4,16 +4,16 @@ import * as salesService from './sales.service.js';
 export const createSale = asyncWrapper(async (req, res) => {
     const { companyId } = req.params;
     const { userId } = req.user;
-    
-    // Destructuramos el body para pasar limpio el objeto data
-    const { 
-        items, 
-        warehouseId, 
-        customerId, 
-        discount, 
-        paymentMethod, 
-        amountPaid, 
-        updateStock 
+
+    // Solo extraemos lo necesario, nada de legacy fields
+    const {
+        items,
+        warehouseId,
+        customerId,
+        discount,
+        payments,      // Array de pagos
+        updateStock,
+        saleCategoryId // Agregado por si faltaba
     } = req.body;
 
     const sale = await salesService.createSale(companyId, userId, {
@@ -21,9 +21,9 @@ export const createSale = asyncWrapper(async (req, res) => {
         warehouseId,
         customerId,
         discount,
-        paymentMethod,
-        amountPaid,
-        updateStock
+        payments, 
+        updateStock,
+        saleCategoryId
     });
 
     res.status(201).json({
@@ -67,7 +67,7 @@ export const cancelSale = asyncWrapper(async (req, res) => {
     const { companyId, id } = req.params;
     const { userId } = req.user;
     // Opcional: si el cliente necesita forzar el almacén de devolución
-    const { warehouseId } = req.body; 
+    const { warehouseId } = req.body;
 
     const sale = await salesService.cancelSale(companyId, id, userId, warehouseId);
 

@@ -16,7 +16,6 @@ describe('Sales Service', () => {
     const mockUserId = 'user-1';
     const mockWarehouseId = 'warehouse-1';
 
-    // Factory actualizado con los nuevos campos
     const createMockSale = (overrides = {}) => ({
         id: 'sale-1',
         companyId: mockCompanyId,
@@ -41,23 +40,33 @@ describe('Sales Service', () => {
             warehouseId: mockWarehouseId,
             items: [{ productId: 'prod-1', quantity: 2, price: 50 }],
             discount: 0,
-            paymentMethod: 'CASH',
-            amountPaid: 100
+            // Ajustamos la estructura de pagos para que coincida con lo que espera el servicio
+            payments: [{ paymentMethod: 'CASH', amount: 100 }],
+            updateStock: true
         };
 
         test('crea venta guardando warehouseId y status', async () => {
             // Mocks
             mockPrisma.warehouse.findFirst.mockResolvedValue({ id: mockWarehouseId, active: true });
+
+            // CORRECCIÓN 1: Mockear el cliente para evitar error 404
+            mockPrisma.customer.findFirst.mockResolvedValue({ id: 'cust-1', active: true });
+
             mockPrisma.product.findMany.mockResolvedValue([
-                { id: 'prod-1', companyId: mockCompanyId, costs: [{ cost: 30 }] }
+                {
+                    id: 'prod-1',
+                    companyId: mockCompanyId,
+                    costs: [{ cost: 30 }],
+                    stocks: [{ quantity: 50, warehouseId: mockWarehouseId }]
+                }
             ]);
+
             mockPrisma.sale.create.mockResolvedValue(createMockSale({ id: 'sale-new' }));
             mockPrisma.salePayment.create.mockResolvedValue({});
             mockPrisma.moneyMovement.create.mockResolvedValue({});
 
             await salesService.createSale(mockCompanyId, mockUserId, inputData);
 
-            // Verificamos que se guardan los nuevos campos
             expect(mockPrisma.sale.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     data: expect.objectContaining({
@@ -77,45 +86,46 @@ describe('Sales Service', () => {
     describe('cancelSale', () => {
         test('anula venta detectando automáticamente el warehouseId de la venta', async () => {
             const saleId = 'sale-1';
-            
-            // Simulamos venta que YA tiene warehouseId guardado
+
             const mockSale = createMockSale({
                 warehouseId: mockWarehouseId,
                 status: 'COMPLETED',
                 items: [{ productId: 'prod-1', quantity: 1 }],
-                payments: [{ amount: 100 }]
+                payments: [{ amount: 100, paymentMethod: 'CASH' }]
             });
 
             mockPrisma.sale.findFirst.mockResolvedValue(mockSale);
             // Mockeamos el update para retornar la venta cancelada
             mockPrisma.sale.update.mockResolvedValue({ ...mockSale, status: 'CANCELED' });
 
-            // LLAMADA: Nota que NO pasamos warehouseId como 4to parámetro
-            // salesService.cancelSale(companyId, saleId, userId, warehouseId?)
-            await salesService.cancelSale(mockCompanyId, saleId, mockUserId); 
+            await salesService.cancelSale(mockCompanyId, saleId, mockUserId);
 
-            // 1. Verificamos que usó el warehouseId de la venta para devolver stock
+            // CORRECCIÓN 2: Se agrega el 7mo argumento 'SALE' que faltaba
             expect(mockStockService.registerStockEntry).toHaveBeenCalledWith(
                 mockCompanyId,
                 mockWarehouseId,
                 expect.any(Array),
                 saleId,
-                 mockUserId,
-                expect.anything() // El transaction client
+                mockUserId,
+                expect.anything(), // El transaction client
+                'SALE'
             );
 
-            // 2. Verificamos que actualiza el estado a CANCELED
+            // CORRECCIÓN 3: Se espera paymentStatus: 'PENDING' en el update
             expect(mockPrisma.sale.update).toHaveBeenCalledWith(
                 expect.objectContaining({
                     where: { id: saleId },
-                    data: { status: 'CANCELED' }
+                    data: expect.objectContaining({
+                        status: 'CANCELED',
+                        paymentStatus: 'PENDING'
+                    })
                 })
             );
         });
 
         test('falla si la venta ya estaba cancelada', async () => {
             const saleId = 'sale-canceled';
-            
+
             const mockSale = createMockSale({
                 status: 'CANCELED',
                 warehouseId: mockWarehouseId
@@ -123,11 +133,9 @@ describe('Sales Service', () => {
 
             mockPrisma.sale.findFirst.mockResolvedValue(mockSale);
 
-            // Debe lanzar error
             await expect(salesService.cancelSale(mockCompanyId, saleId, mockUserId))
                 .rejects.toThrow('ya fue anulada');
-            
-            // Asegura que no movió stock ni dinero
+
             expect(mockStockService.registerStockEntry).not.toHaveBeenCalled();
             expect(mockPrisma.moneyMovement.create).not.toHaveBeenCalled();
         });

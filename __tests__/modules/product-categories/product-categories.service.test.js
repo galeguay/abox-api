@@ -2,7 +2,7 @@ import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { mockPrisma } from '../../mocks/prisma.js';
 
 // Importamos el servicio dinámicamente
-const categoriesService = await import('../../../src/modules/product-categories/product-categories.service.js');
+import * as categoriesService from '../../../src/modules/product-categories/product-categories.service.js';
 
 describe('Product Categories Service', () => {
     const mockCompanyId = 'company-1';

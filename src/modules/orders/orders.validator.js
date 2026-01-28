@@ -1,5 +1,18 @@
 import { body, query, param } from 'express-validator';
 
+const paymentValidationRules = (prefix = 'payments.*.') => [
+    body(`${prefix}amount`)
+        .isFloat({ min: 0.01 })
+        .withMessage('El monto debe ser mayor a 0'),
+    body(`${prefix}paymentMethod`)
+        .notEmpty()
+        .isIn(['CASH', 'CARD', 'TRANSFER', 'CHECK', 'VIRTUAL'])
+        .withMessage('Método de pago inválido'),
+    body(`${prefix}reference`)
+        .optional()
+        .isString()
+];
+
 export const createOrderValidator = [
     body('customerId')
         .optional()
@@ -10,6 +23,7 @@ export const createOrderValidator = [
         .withMessage('items debe ser un array con al menos 1 elemento'),
     body('items.*.productId')
         .notEmpty()
+        .isUUID()
         .withMessage('productId es requerido'),
     body('items.*.quantity')
         .isFloat({ min: 0.01 })
@@ -29,7 +43,6 @@ export const createOrderValidator = [
         .optional()
         .isFloat({ min: 0 })
         .withMessage('discount debe ser mayor o igual a 0'),
-    // orders.validator.js
     body('warehouseId')
         .notEmpty()
         .isUUID()
@@ -38,8 +51,13 @@ export const createOrderValidator = [
         .optional()
         .isString()
         .withMessage('Las notas deben ser texto')
-        .isLength({ max: 500 }) // Opcional: limitar el largo
+        .isLength({ max: 500 })
         .withMessage('La nota es muy larga'),
+    body('payments')
+        .optional()
+        .isArray()
+        .withMessage('payments debe ser un array'),
+    ...paymentValidationRules('payments.*.')
 ];
 
 export const updateOrderStatusValidator = [
@@ -49,30 +67,15 @@ export const updateOrderStatusValidator = [
         .withMessage('status debe ser uno de: PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELED'),
 ];
 
-export const addOrderItemValidator = [
-    body('productId')
-        .notEmpty()
-        .withMessage('productId es requerido'),
-    body('quantity')
-        .isFloat({ min: 0.01 })
-        .withMessage('quantity debe ser mayor a 0'),
-    body('basePrice')
-        .isFloat({ min: 0 })
-        .withMessage('basePrice debe ser válido'),
-];
-
 export const addOrderPaymentValidator = [
-    body('amount')
-        .isFloat({ min: 0.01 })
-        .withMessage('amount debe ser mayor a 0'),
-    body('paymentMethod')
-        .notEmpty()
-        .isIn(['CASH', 'CARD', 'TRANSFER', 'CHECK', 'VIRTUAL'])
-        .withMessage('paymentMethod debe ser uno de: CASH, CARD, TRANSFER, CHECK, VIRTUAL'),
+    body('payments')
+        .optional()
+        .isArray()
+        .withMessage('payments debe ser un array'),
+    ...paymentValidationRules('payments.*.'),
     body('reference')
         .optional()
         .isLength({ min: 1 })
-        .withMessage('reference no puede estar vacío'),
 ];
 
 export const listOrdersValidator = [
@@ -94,8 +97,21 @@ export const listOrdersValidator = [
         .withMessage('paymentStatus inválido'),
 ];
 
-export const updateOrderDetailsValidator = [
-    body('notes').optional().isString().withMessage('Las notas deben ser texto'),
-    body('deliveryFee').optional().isFloat({ min: 0 }).withMessage('El deliveryFee debe ser mayor o igual a 0'),
-    body('discount').optional().isFloat({ min: 0 }).withMessage('El descuento debe ser mayor o igual a 0'),
+export const updateOrderValidator = [
+    param('id').isUUID().withMessage('ID de orden no válido'),
+    body('items')
+        .isArray({ min: 1 })
+        .withMessage('Debe enviar al menos un item'),
+    body('items.*.productId')
+        .notEmpty()
+        .isUUID() // Aseguramos que sea UUID antes de ir al servicio
+        .withMessage('Cada item debe tener un productId válido'),
+    body('items.*.quantity')
+        .isFloat({ min: 0.01 })
+        .withMessage('La cantidad debe ser mayor a 0'),
+    body('items.*.basePrice')
+        .isFloat({ min: 0 })
+        .withMessage('El precio base debe ser válido'),
+    // ... resto de validaciones 
 ];
+
