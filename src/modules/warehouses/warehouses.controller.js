@@ -16,12 +16,12 @@ export const createWarehouse = asyncWrapper(async (req, res) => {
 
 export const getWarehouses = asyncWrapper(async (req, res) => {
   const { companyId } = req.params;
-  const { page, limit, active } = req.query;
+  const { page, limit, active } = req.query; 
 
   const result = await warehousesService.getWarehouses(companyId, {
     page: page ? parseInt(page) : 1,
     limit: limit ? parseInt(limit) : 10,
-    active: active === 'true',
+    active: active,
   });
 
   res.json({
@@ -54,5 +54,21 @@ export const updateWarehouse = asyncWrapper(async (req, res) => {
     success: true,
     message: 'Almacén actualizado exitosamente',
     data: warehouse,
+  });
+});
+
+export const getWarehouseStocks = asyncWrapper(async (req, res) => {
+  const { companyId, id } = req.params;
+  const { page, limit, search } = req.query;
+
+  const result = await warehousesService.getWarehouseStocks(companyId, id, {
+    page: page ? parseInt(page) : 1,
+    limit: limit ? parseInt(limit) : 10,
+    search,
+  });
+
+  res.json({
+    success: true,
+    ...result,
   });
 });

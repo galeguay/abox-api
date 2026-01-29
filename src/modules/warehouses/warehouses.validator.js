@@ -31,5 +31,22 @@ export const listWarehousesValidator = [
   query('active')
     .optional()
     .isBoolean()
-    .withMessage('active debe ser un booleano'),
+    .withMessage('active debe ser "true" o "false"')
+    .toBoolean(), 
+];
+
+// Agregamos mensajes de error aquí también para consistencia
+export const listStocksValidator = [
+  query('page')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('page debe ser un número entero mayor a 0'),
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('limit debe estar entre 1 y 100'),
+  query('search')
+    .optional()
+    .isString()
+    .withMessage('search debe ser una cadena de texto'),
 ];

@@ -1,5 +1,5 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
-import { mockPrisma } from '../../mocks/prisma.js'; // Tu mock centralizado
+import { mockPrisma } from '../../mocks/prisma.js';
 import { Prisma } from '@prisma/client';
 
 

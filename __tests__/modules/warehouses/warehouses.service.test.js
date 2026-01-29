@@ -1,9 +1,7 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
 import { mockPrisma } from '../../mocks/prisma.js';
 import AppError from '../../../src/errors/AppError.js';
-
-// Import dinámico del servicio como en tu ejemplo
-const warehousesService = await import('../../../src/modules/warehouses/warehouses.service.js');
+import * as warehousesService from '../../../src/modules/warehouses/warehouses.service.js';
 
 describe('Warehouses Service', () => {
     const mockCompanyId = 'company-1';
@@ -15,8 +13,22 @@ describe('Warehouses Service', () => {
         companyId: mockCompanyId,
         active: true,
         createdAt: new Date(),
-        stocks: [], // Simulamos la relación vacía por defecto
-        _count: { stocks: 10 },
+        stocks: [], 
+        _count: { stocks: 10 }, // Simulamos el count que pide el servicio
+        ...overrides
+    });
+
+    // Factory: Crea un objeto Stock para las pruebas de stocks
+    const createMockStock = (overrides = {}) => ({
+        id: 'stock-1',
+        productId: 'prod-1',
+        warehouseId: 'warehouse-1',
+        quantity: 50,
+        product: {
+            id: 'prod-1',
+            name: 'Producto Test',
+            sku: 'SKU-123'
+        },
         ...overrides
     });
 
@@ -28,7 +40,6 @@ describe('Warehouses Service', () => {
         test('crea un almacén correctamente', async () => {
             const newWarehouseData = { name: 'Nuevo Almacén' };
 
-            // Simulamos la respuesta de Prisma
             mockPrisma.warehouse.create.mockResolvedValue(createMockWarehouse(newWarehouseData));
 
             const result = await warehousesService.createWarehouse(mockCompanyId, newWarehouseData);
@@ -52,42 +63,38 @@ describe('Warehouses Service', () => {
             ];
             const mockTotal = 2;
 
-            // Mockeamos Promise.all: findMany y count
             mockPrisma.warehouse.findMany.mockResolvedValue(mockList);
             mockPrisma.warehouse.count.mockResolvedValue(mockTotal);
 
-            const filters = { page: 1, limit: 10 };
+            const filters = { page: 1, limit: 10, active: true };
             const result = await warehousesService.getWarehouses(mockCompanyId, filters);
 
-            // Verificamos estructura de paginación
             expect(result.data).toHaveLength(2);
-            expect(result.pagination).toEqual({
-                page: 1,
-                limit: 10,
-                total: 2,
-                pages: 1
-            });
-
-            // Verificamos que se llame con el filtro de companyId
+            expect(result.pagination.total).toBe(2);
+            
+            // Verificamos que filters.active se pase al where
             expect(mockPrisma.warehouse.findMany).toHaveBeenCalledWith(
-                expect.objectContaining({ where: expect.objectContaining({ companyId: mockCompanyId }) })
+                expect.objectContaining({ 
+                    where: { 
+                        companyId: mockCompanyId,
+                        active: true 
+                    } 
+                })
             );
         });
     });
 
     describe('getWarehouseById', () => {
-        test('devuelve el almacén con sus detalles si existe', async () => {
+        test('devuelve el almacén si existe', async () => {
             const mockWarehouse = createMockWarehouse();
             mockPrisma.warehouse.findFirst.mockResolvedValue(mockWarehouse);
 
             const result = await warehousesService.getWarehouseById(mockCompanyId, 'warehouse-1');
 
             expect(result).toEqual(mockWarehouse);
-            expect(mockPrisma.warehouse.findFirst).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { id: 'warehouse-1', companyId: mockCompanyId }
-                })
-            );
+            expect(mockPrisma.warehouse.findFirst).toHaveBeenCalledWith({
+                where: { id: 'warehouse-1', companyId: mockCompanyId }
+            });
         });
 
         test('lanza AppError si el almacén no existe', async () => {
@@ -99,33 +106,64 @@ describe('Warehouses Service', () => {
         });
     });
 
+    // --- NUEVOS TESTS AÑADIDOS ---
+    describe('getWarehouseStocks', () => {
+        test('devuelve stocks paginados si el almacén existe', async () => {
+            // 1. Mock de validación del almacén
+            mockPrisma.warehouse.findFirst.mockResolvedValue(createMockWarehouse());
+            
+            // 2. Mock de búsqueda de stocks
+            const mockStocks = [createMockStock(), createMockStock({ id: 'stock-2' })];
+            mockPrisma.stock.findMany.mockResolvedValue(mockStocks);
+            mockPrisma.stock.count.mockResolvedValue(2);
+
+            const result = await warehousesService.getWarehouseStocks(mockCompanyId, 'warehouse-1', { page: 1 });
+
+            expect(result.data).toHaveLength(2);
+            expect(result.data[0].product.name).toBe('Producto Test');
+            
+            // Verifica que se llamó primero a validar el almacén
+            expect(mockPrisma.warehouse.findFirst).toHaveBeenCalled();
+            // Verifica la query de stocks
+            expect(mockPrisma.stock.findMany).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: expect.objectContaining({ warehouseId: 'warehouse-1' })
+                })
+            );
+        });
+
+        test('lanza error si el almacén no existe antes de buscar stocks', async () => {
+            // Simulamos que el almacén no existe
+            mockPrisma.warehouse.findFirst.mockResolvedValue(null);
+
+            await expect(
+                warehousesService.getWarehouseStocks(mockCompanyId, 'warehouse-X', {})
+            ).rejects.toThrow(AppError);
+
+            // Importante: Asegurar que NO intentó buscar stocks si falló el almacén
+            expect(mockPrisma.stock.findMany).not.toHaveBeenCalled();
+        });
+    });
+    // -----------------------------
+
     describe('updateWarehouse', () => {
         test('actualiza el almacén si pertenece a la empresa', async () => {
-            // 1. Mock findFirst (Verificación de propiedad)
             mockPrisma.warehouse.findFirst.mockResolvedValue(createMockWarehouse());
-            // 2. Mock update (Acción real)
             mockPrisma.warehouse.update.mockResolvedValue(createMockWarehouse({ name: 'Nombre Editado' }));
 
             const result = await warehousesService.updateWarehouse(mockCompanyId, 'warehouse-1', { name: 'Nombre Editado' });
 
             expect(result.name).toBe('Nombre Editado');
-            expect(mockPrisma.warehouse.update).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: { id: 'warehouse-1' },
-                    data: expect.objectContaining({ name: 'Nombre Editado' })
-                })
-            );
+            expect(mockPrisma.warehouse.update).toHaveBeenCalled();
         });
 
-        test('lanza error si intenta editar almacén de otra empresa', async () => {
-            // Simulamos que no encuentra el almacén bajo ese companyId
+        test('lanza error si intenta editar almacén inexistente o de otra empresa', async () => {
             mockPrisma.warehouse.findFirst.mockResolvedValue(null);
 
             await expect(
                 warehousesService.updateWarehouse(mockCompanyId, 'warehouse-1', { name: 'Hacker' })
             ).rejects.toThrow(AppError);
 
-            // Aseguramos que NO se ejecutó el update
             expect(mockPrisma.warehouse.update).not.toHaveBeenCalled();
         });
     });

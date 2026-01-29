@@ -1,11 +1,9 @@
-import { Role } from '@prisma/client';
-
 export const ROLES = {
-    OWNER: Role.OWNER,
-    ADMIN: Role.ADMIN,
-    EMPLOYEE: Role.EMPLOYEE,
-    READ_ONLY: Role.READ_ONLY,
+    OWNER: 'OWNER',
+    ADMIN: 'ADMIN',
+    MANAGER: 'MANAGER',
+    EMPLOYEE: 'EMPLOYEE',
+    READ_ONLY: 'READ_ONLY',
 };
 
-export const STAFF_ROLES = [ROLES.OWNER, ROLES.ADMIN, ROLES.EMPLOYEE];
-export const ALL_ROLES = Object.values(ROLES);
+export const AVAILABLE_ROLES = Object.values(ROLES);

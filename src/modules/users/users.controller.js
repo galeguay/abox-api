@@ -122,8 +122,15 @@ export const getRolePermissions = asyncWrapper(async (req, res) => {
 // ==================== MÉTODOS HEREDADOS ====================
 
 export const getUsers = asyncWrapper(async (req, res) => {
-  const users = await userService.default.getAll();
-  res.json({ ok: true, data: users });
+  const { page = 1, limit = 10, search } = req.query;
+  
+  const result = await userService.default.getAll(
+      parseInt(page), 
+      parseInt(limit), 
+      search
+  );
+  
+  res.json({ ok: true, ...result });
 });
 
 export const getUserById = asyncWrapper(async (req, res) => {
@@ -144,4 +151,10 @@ export const activateUser = asyncWrapper(async (req, res) => {
 export const deactivateUser = asyncWrapper(async (req, res) => {
   await userService.default.setActive(req.params.id, false);
   res.json({ ok: true, message: 'Usuario desactivado' });
+});
+
+export const setupPassword = asyncWrapper(async (req, res) => {
+  const { token, newPassword } = req.body;
+  const result = await userService.completeInvitation(token, newPassword);
+  res.json({ ok: true, data: result });
 });

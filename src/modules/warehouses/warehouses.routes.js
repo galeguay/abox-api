@@ -9,6 +9,7 @@ import {
   createWarehouseValidator,
   updateWarehouseValidator,
   listWarehousesValidator,
+  listStocksValidator, // <--- ¡CORREGIDO: Faltaba este import!
 } from './warehouses.validator.js';
 
 const router = Router();
@@ -48,6 +49,14 @@ router.put(
   validateFields,
   auditMiddleware('UPDATE', 'WAREHOUSE'),
   warehousesController.updateWarehouse
+);
+
+router.get(
+  '/companies/:companyId/warehouses/:id/stocks',
+  listStocksValidator,
+  validateFields,
+  auditMiddleware('READ', 'STOCK'),
+  warehousesController.getWarehouseStocks
 );
 
 export default router;

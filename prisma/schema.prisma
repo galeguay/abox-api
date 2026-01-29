@@ -58,12 +58,14 @@ enum UserType {
 }
 
 model User {
-    id        String   @id @default(uuid())
-    email     String   @unique
-    password  String
-    active    Boolean  @default(true)
-    type      UserType @default(COMPANY)
-    createdAt DateTime @default(now())
+    id                String    @id @default(uuid())
+    email             String    @unique
+    password          String
+    active            Boolean   @default(true)
+    type              UserType  @default(COMPANY)
+    createdAt         DateTime  @default(now())
+    invitationToken   String?   @unique
+    invitationExpires DateTime?
 
     cashSessions   CashSession[]
     companies      UserCompany[]
@@ -613,6 +615,7 @@ enum Role {
     ADMIN
     EMPLOYEE
     READ_ONLY
+    MANAGER
 }
 
 model Module {
