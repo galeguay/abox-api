@@ -1,4 +1,4 @@
-import { ROLES, STAFF_ROLES, ALL_ROLES } from '../constants/roles.js';
+import { ROLES, STAFF_ROLES, ALL_ROLES } from '../constants/rols.js';
 
 export const INVENTORY_PERMISSIONS = {
   READ: ALL_ROLES,

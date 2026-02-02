@@ -4,16 +4,8 @@ import requireRole from '../../middlewares/requireRole.js';
 import validateFields from '../../middlewares/validateFields.js';
 import { auditMiddleware } from '../../middlewares/auditMiddleware.js';
 
+// Importamos SOLO lo que existe en el controlador
 import {
-    createProduct,
-    getProducts,
-    getProductById,
-    updateProduct,
-    deleteProduct,
-    createWarehouse,
-    getWarehouses,
-    getWarehouseById,
-    updateWarehouse,
     getStockByProduct,
     getTotalStock,
     createStockMovement,
@@ -21,122 +13,46 @@ import {
     getStockMovements,
 } from './stock.controller.js';
 
+// Importamos SOLO los validadores relacionados con stock
 import {
-    createProductValidator,
-    updateProductValidator,
-    listProductsValidator,
-    createWarehouseValidator,
-    updateWarehouseValidator,
-    listWarehousesValidator,
     createStockMovementValidator,
     transferStockValidator,
     listStockMovementsValidator,
+    getStockValidator,
 } from './stock.validator.js';
 
 const router = Router();
 
-// Middleware de autenticación
+// Middleware de autenticación global para este router
 router.use(authMiddleware('COMPANY'));
 router.use(requireRole(['OWNER', 'ADMIN', 'MANAGER']));
 
-// ==================== PRODUCTOS ====================
+// ==================== CONSULTAS DE STOCK ====================
 
-// POST /companies/:companyId/products - Crear producto
-router.post(
-    '/companies/:companyId/products',
-    createProductValidator,
-    validateFields,
-    auditMiddleware('CREATE', 'PRODUCT'),
-    createProduct
-);
-
-// GET /companies/:companyId/products - Listar productos
-router.get(
-    '/companies/:companyId/products',
-    listProductsValidator,
-    validateFields,
-    auditMiddleware('READ', 'PRODUCT'),
-    getProducts
-);
-
-// GET /companies/:companyId/products/:productId - Obtener producto
-router.get(
-    '/companies/:companyId/products/:productId',
-    auditMiddleware('READ', 'PRODUCT'),
-    getProductById
-);
-
-// PUT /companies/:companyId/products/:productId - Actualizar producto
-router.put(
-    '/companies/:companyId/products/:productId',
-    updateProductValidator,
-    validateFields,
-    auditMiddleware('UPDATE', 'PRODUCT'),
-    updateProduct
-);
-
-// DELETE /companies/:companyId/products/:productId - Eliminar producto
-router.delete(
-    '/companies/:companyId/products/:productId',
-    auditMiddleware('DELETE', 'PRODUCT'),
-    deleteProduct
-);
-
-// ==================== ALMACENES ====================
-
-// POST /companies/:companyId/warehouses - Crear almacén
-router.post(
-    '/companies/:companyId/warehouses',
-    createWarehouseValidator,
-    validateFields,
-    auditMiddleware('CREATE', 'WAREHOUSE'),
-    createWarehouse
-);
-
-// GET /companies/:companyId/warehouses - Listar almacenes
-router.get(
-    '/companies/:companyId/warehouses',
-    listWarehousesValidator,
-    validateFields,
-    auditMiddleware('READ', 'WAREHOUSE'),
-    getWarehouses
-);
-
-// GET /companies/:companyId/warehouses/:warehouseId - Obtener almacén
-router.get(
-    '/companies/:companyId/warehouses/:warehouseId',
-    auditMiddleware('READ', 'WAREHOUSE'),
-    getWarehouseById
-);
-
-// PUT /companies/:companyId/warehouses/:warehouseId - Actualizar almacén
-router.put(
-    '/companies/:companyId/warehouses/:warehouseId',
-    updateWarehouseValidator,
-    validateFields,
-    auditMiddleware('UPDATE', 'WAREHOUSE'),
-    updateWarehouse
-);
-
-// ==================== STOCK ====================
-
-// GET /companies/:companyId/products/:productId/warehouses/:warehouseId - Obtener stock específico
+// GET /companies/:companyId/products/:productId/warehouses/:warehouseId
+// Obtener stock de un producto en un almacén específico
 router.get(
     '/companies/:companyId/products/:productId/warehouses/:warehouseId',
+    getStockValidator, // Valida que companyId y productId existan
+    validateFields,     // Ejecuta la validación antes de pasar al controller
     auditMiddleware('READ', 'STOCK'),
     getStockByProduct
 );
 
-// GET /companies/:companyId/products/:productId/total - Obtener stock total
+// GET /companies/:companyId/products/:productId/total
+// Obtener stock total de un producto (sumando todos los almacenes)
 router.get(
     '/companies/:companyId/products/:productId/total',
+    getStockValidator,
+    validateFields,
     auditMiddleware('READ', 'STOCK'),
     getTotalStock
 );
 
-// ==================== MOVIMIENTOS DE STOCK ====================
+// ==================== MOVIMIENTOS Y TRANSFERENCIAS ====================
 
-// POST /companies/:companyId/movements - Crear movimiento de stock
+// POST /companies/:companyId/movements
+// Crear un movimiento manual (Entrada/Salida/Ajuste)
 router.post(
     '/companies/:companyId/movements',
     createStockMovementValidator,
@@ -145,7 +61,8 @@ router.post(
     createStockMovement
 );
 
-// POST /companies/:companyId/transfer - Transferir stock
+// POST /companies/:companyId/transfer
+// Transferir stock entre almacenes
 router.post(
     '/companies/:companyId/transfer',
     transferStockValidator,
@@ -154,7 +71,8 @@ router.post(
     transferStock
 );
 
-// GET /companies/:companyId/movements - Listar movimientos
+// GET /companies/:companyId/movements
+// Historial de movimientos (con filtros)
 router.get(
     '/companies/:companyId/movements',
     listStockMovementsValidator,

@@ -1,5 +1,5 @@
 import { body, query } from 'express-validator';
-import { AVAILABLE_ROLES } from '../../constants/roles.js';
+import { AVAILABLE_ROLES } from '../../constants/rols.js';
 
 export const updateMeValidator = [
     body('firstName')

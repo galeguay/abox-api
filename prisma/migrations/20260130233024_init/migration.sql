@@ -1,14 +1,14 @@
 -- CreateEnum
-CREATE TYPE "MovementType" AS ENUM ('IN', 'OUT', 'ADJUST', 'TRANSFER');
+CREATE TYPE "MovementType" AS ENUM ('IN', 'OUT');
 
 -- CreateEnum
 CREATE TYPE "UserType" AS ENUM ('COMPANY', 'PLATFORM');
 
 -- CreateEnum
-CREATE TYPE "StockReferenceType" AS ENUM ('SALE', 'ORDER', 'PURCHASE', 'ADJUSTMENT', 'TRANSFER');
+CREATE TYPE "StockReferenceType" AS ENUM ('SALE', 'ORDER', 'PURCHASE', 'ADJUSTMENT', 'TRANSFER', 'ORDER_RESERVATION');
 
 -- CreateEnum
-CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'CARD', 'TRANSFER', 'VIRTUAL');
+CREATE TYPE "PaymentMethod" AS ENUM ('CASH', 'CARD', 'TRANSFER', 'VIRTUAL', 'CHECK');
 
 -- CreateEnum
 CREATE TYPE "MoneyType" AS ENUM ('IN', 'OUT');
@@ -29,13 +29,22 @@ CREATE TYPE "PurchaseStatus" AS ENUM ('DRAFT', 'CONFIRMED', 'RECEIVED', 'CANCELE
 CREATE TYPE "PromotionType" AS ENUM ('DISCOUNT_PERCENT', 'DISCOUNT_FIXED', 'BUY_X_GET_Y', 'COMBO');
 
 -- CreateEnum
-CREATE TYPE "Role" AS ENUM ('OWNER', 'ADMIN', 'EMPLOYEE', 'READ_ONLY');
+CREATE TYPE "Role" AS ENUM ('OWNER', 'ADMIN', 'EMPLOYEE', 'READ_ONLY', 'MANAGER');
+
+-- CreateEnum
+CREATE TYPE "SaleStatus" AS ENUM ('COMPLETED', 'CANCELED');
 
 -- CreateTable
 CREATE TABLE "Company" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "taxId" TEXT,
+    "email" TEXT,
+    "phone" TEXT,
+    "address" TEXT,
+    "logoUrl" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT true,
+    "config" JSONB DEFAULT '{}',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Company_pkey" PRIMARY KEY ("id")
@@ -49,6 +58,8 @@ CREATE TABLE "User" (
     "active" BOOLEAN NOT NULL DEFAULT true,
     "type" "UserType" NOT NULL DEFAULT 'COMPANY',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "invitationToken" TEXT,
+    "invitationExpires" TIMESTAMP(3),
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -59,6 +70,7 @@ CREATE TABLE "UserCompany" (
     "userId" TEXT NOT NULL,
     "companyId" TEXT NOT NULL,
     "role" "Role" NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
 
     CONSTRAINT "UserCompany_pkey" PRIMARY KEY ("id")
 );
@@ -71,6 +83,7 @@ CREATE TABLE "Product" (
     "sku" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "price" DECIMAL(65,30) NOT NULL DEFAULT 0,
     "productCategoryId" TEXT,
 
     CONSTRAINT "Product_pkey" PRIMARY KEY ("id")
@@ -84,6 +97,18 @@ CREATE TABLE "ProductComponent" (
     "quantity" DECIMAL(65,30) NOT NULL,
 
     CONSTRAINT "ProductComponent_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ProductPrice" (
+    "id" TEXT NOT NULL,
+    "productId" TEXT NOT NULL,
+    "companyId" TEXT NOT NULL,
+    "price" DECIMAL(65,30) NOT NULL,
+    "reason" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ProductPrice_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -117,6 +142,7 @@ CREATE TABLE "StockMovement" (
     "quantity" DECIMAL(65,30) NOT NULL,
     "referenceType" "StockReferenceType",
     "referenceId" TEXT,
+    "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdById" TEXT,
 
@@ -210,6 +236,11 @@ CREATE TABLE "Sale" (
     "deliveryFee" DECIMAL(65,30),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "orderId" TEXT,
+    "saleCategoryId" TEXT,
+    "status" "SaleStatus" NOT NULL DEFAULT 'COMPLETED',
+    "warehouseId" TEXT NOT NULL,
+    "customerId" TEXT,
+    "notes" TEXT,
     "paymentStatus" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
 
     CONSTRAINT "Sale_pkey" PRIMARY KEY ("id")
@@ -258,6 +289,7 @@ CREATE TABLE "Order" (
     "id" TEXT NOT NULL,
     "companyId" TEXT NOT NULL,
     "createdById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "customerId" TEXT,
     "status" "OrderStatus" NOT NULL DEFAULT 'PENDING',
     "deliveryFee" DECIMAL(65,30),
@@ -265,7 +297,8 @@ CREATE TABLE "Order" (
     "discount" DECIMAL(65,30),
     "total" DECIMAL(65,30) NOT NULL,
     "deliveryZoneId" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "warehouseId" TEXT NOT NULL,
+    "notes" TEXT,
     "paymentStatus" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
 
     CONSTRAINT "Order_pkey" PRIMARY KEY ("id")
@@ -303,6 +336,7 @@ CREATE TABLE "Supplier" (
     "companyId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "active" BOOLEAN NOT NULL DEFAULT true,
+    "notes" TEXT,
 
     CONSTRAINT "Supplier_pkey" PRIMARY KEY ("id")
 );
@@ -318,6 +352,7 @@ CREATE TABLE "Purchase" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "receivedAt" TIMESTAMP(3),
     "warehouseId" TEXT NOT NULL,
+    "notes" TEXT,
 
     CONSTRAINT "Purchase_pkey" PRIMARY KEY ("id")
 );
@@ -536,8 +571,50 @@ CREATE TABLE "SaleItemModifier" (
     CONSTRAINT "SaleItemModifier_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "RefreshToken" (
+    "id" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "companyId" TEXT,
+    "type" "UserType" NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "RefreshToken_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SalesBySaleCategory" (
+    "id" TEXT NOT NULL,
+    "companyId" TEXT NOT NULL,
+    "saleCategoryId" TEXT NOT NULL,
+    "totalSales" DECIMAL(65,30) NOT NULL,
+    "salesCount" INTEGER NOT NULL,
+
+    CONSTRAINT "SalesBySaleCategory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SaleCategory" (
+    "id" TEXT NOT NULL,
+    "companyId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "color" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "SaleCategory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Company_taxId_key" ON "Company"("taxId");
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "User_invitationToken_key" ON "User"("invitationToken");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "UserCompany_userId_companyId_key" ON "UserCompany"("userId", "companyId");
@@ -553,6 +630,9 @@ CREATE UNIQUE INDEX "Product_companyId_sku_key" ON "Product"("companyId", "sku")
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ProductComponent_parentId_componentId_key" ON "ProductComponent"("parentId", "componentId");
+
+-- CreateIndex
+CREATE INDEX "ProductPrice_productId_idx" ON "ProductPrice"("productId");
 
 -- CreateIndex
 CREATE INDEX "Warehouse_companyId_active_idx" ON "Warehouse"("companyId", "active");
@@ -619,6 +699,9 @@ CREATE INDEX "Sale_companyId_createdAt_idx" ON "Sale"("companyId", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "Sale_companyId_paymentStatus_createdAt_idx" ON "Sale"("companyId", "paymentStatus", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "Sale_companyId_warehouseId_idx" ON "Sale"("companyId", "warehouseId");
 
 -- CreateIndex
 CREATE INDEX "SaleItem_productId_idx" ON "SaleItem"("productId");
@@ -737,6 +820,21 @@ CREATE UNIQUE INDEX "ProductModifierGroup_productId_groupId_key" ON "ProductModi
 -- CreateIndex
 CREATE UNIQUE INDEX "SaleItemModifier_saleItemId_modifierId_key" ON "SaleItemModifier"("saleItemId", "modifierId");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "RefreshToken_token_key" ON "RefreshToken"("token");
+
+-- CreateIndex
+CREATE INDEX "SalesBySaleCategory_companyId_idx" ON "SalesBySaleCategory"("companyId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "SalesBySaleCategory_companyId_saleCategoryId_key" ON "SalesBySaleCategory"("companyId", "saleCategoryId");
+
+-- CreateIndex
+CREATE INDEX "SaleCategory_companyId_active_idx" ON "SaleCategory"("companyId", "active");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "SaleCategory_companyId_name_key" ON "SaleCategory"("companyId", "name");
+
 -- AddForeignKey
 ALTER TABLE "UserCompany" ADD CONSTRAINT "UserCompany_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
@@ -754,6 +852,12 @@ ALTER TABLE "ProductComponent" ADD CONSTRAINT "ProductComponent_parentId_fkey" F
 
 -- AddForeignKey
 ALTER TABLE "ProductComponent" ADD CONSTRAINT "ProductComponent_componentId_fkey" FOREIGN KEY ("componentId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductPrice" ADD CONSTRAINT "ProductPrice_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductPrice" ADD CONSTRAINT "ProductPrice_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Warehouse" ADD CONSTRAINT "Warehouse_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -807,6 +911,9 @@ ALTER TABLE "ProductCost" ADD CONSTRAINT "ProductCost_companyId_fkey" FOREIGN KE
 ALTER TABLE "DeliveryZone" ADD CONSTRAINT "DeliveryZone_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Sale" ADD CONSTRAINT "Sale_warehouseId_fkey" FOREIGN KEY ("warehouseId") REFERENCES "Warehouse"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Sale" ADD CONSTRAINT "Sale_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -814,6 +921,12 @@ ALTER TABLE "Sale" ADD CONSTRAINT "Sale_companyId_fkey" FOREIGN KEY ("companyId"
 
 -- AddForeignKey
 ALTER TABLE "Sale" ADD CONSTRAINT "Sale_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Sale" ADD CONSTRAINT "Sale_saleCategoryId_fkey" FOREIGN KEY ("saleCategoryId") REFERENCES "SaleCategory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Sale" ADD CONSTRAINT "Sale_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "SaleItem" ADD CONSTRAINT "SaleItem_saleId_fkey" FOREIGN KEY ("saleId") REFERENCES "Sale"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -826,6 +939,9 @@ ALTER TABLE "SalePayment" ADD CONSTRAINT "SalePayment_saleId_fkey" FOREIGN KEY (
 
 -- AddForeignKey
 ALTER TABLE "Customer" ADD CONSTRAINT "Customer_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Order" ADD CONSTRAINT "Order_warehouseId_fkey" FOREIGN KEY ("warehouseId") REFERENCES "Warehouse"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Order" ADD CONSTRAINT "Order_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -940,3 +1056,15 @@ ALTER TABLE "SaleItemModifier" ADD CONSTRAINT "SaleItemModifier_saleItemId_fkey"
 
 -- AddForeignKey
 ALTER TABLE "SaleItemModifier" ADD CONSTRAINT "SaleItemModifier_modifierId_fkey" FOREIGN KEY ("modifierId") REFERENCES "Modifier"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SalesBySaleCategory" ADD CONSTRAINT "SalesBySaleCategory_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SalesBySaleCategory" ADD CONSTRAINT "SalesBySaleCategory_saleCategoryId_fkey" FOREIGN KEY ("saleCategoryId") REFERENCES "SaleCategory"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SaleCategory" ADD CONSTRAINT "SaleCategory_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

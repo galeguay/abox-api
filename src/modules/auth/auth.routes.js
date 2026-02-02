@@ -9,13 +9,16 @@ import {
     refreshToken,
     logout,
     forgotPassword,
+    selectCompanyController,
     resetPassword,
+    logoutAll
 } from './auth.controller.js';
 
 import {
     loginValidator,
     registerValidator,
     forgotPasswordValidator,
+    selectCompanyValidator,
     resetPasswordValidator,
 } from './auth.validator.js';
 
@@ -30,22 +33,32 @@ router.post(
     register
 );
 
-// Login
 router.post(
     '/login',
     loginValidator,
     validateFields,
-    login
-);
+    login);
+
+router.post(
+    '/select-company',
+    selectCompanyValidator,
+    validateFields,
+    selectCompanyController);
 
 // Refresh token
 router.post('/refresh', refreshToken);
 
 // Logout
 router.post(
-    '/logout', 
-    authMiddleware('COMPANY'), 
+    '/logout',
+    authMiddleware('COMPANY'),
     logout
+);
+
+router.post(
+    '/logout-all',
+    authMiddleware('COMPANY'),
+    logoutAll
 );
 
 // Recuperación de contraseña

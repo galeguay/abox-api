@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeAll, afterAll, beforeEach, jest } from '@jest/globals';
+import { describe, test, expect, beforeAll, beforeEach, jest } from '@jest/globals';
 
-// bcryptjs suele ser default export, jsonwebtoken mezcla named/default.
+// 1. MOCKS must be defined before imports
 await jest.unstable_mockModule('bcryptjs', () => ({
   default: {
     compare: jest.fn(),
@@ -15,16 +15,14 @@ await jest.unstable_mockModule('jsonwebtoken', () => ({
   },
 }));
 
-// 2. IMPORTACIONES DINÁMICAS
-// Importamos el mock y el servicio AHORA, para que recojan la versión mockeada.
+// 2. DYNAMIC IMPORTS
 const { default: prisma } = await import('../../../prisma/client.js');
 const { default: bcrypt } = await import('bcryptjs');
 const { default: jwt } = await import('jsonwebtoken');
-
-// Importamos todas las exportaciones del servicio como un objeto
 const authService = await import('../../../src/modules/auth/auth.service.js');
 
 describe('Auth Service (ESM)', () => {
+  // FIX 1: Add 'companies' array to the mock user structure
   const mockUser = {
     id: 'user-1',
     email: 'test@example.com',
@@ -32,86 +30,93 @@ describe('Auth Service (ESM)', () => {
     active: true,
     firstName: 'Test',
     lastName: 'User',
+    type: 'USER', 
+    companies: [
+      {
+        role: 'ADMIN',
+        active: true,
+        company: {
+            id: 'company-1',
+            name: 'Test Company',
+            active: true
+        }
+      }
+    ]
   };
 
   const mockCompanyId = 'company-1';
-  const mockUserCompany = {
-    userId: 'user-1',
-    companyId: mockCompanyId,
-    role: 'ADMIN',
-  };
-
-  beforeAll(() => {
-    // Configuración general
-    // Nota: al ser ESM mocks, accedemos a las funciones .mock directamente
-  });
 
   beforeEach(() => {
     jest.clearAllMocks();
     
-    // Configurar retornos por defecto para evitar ruido en los tests
+    // Default mock returns
     jwt.sign.mockReturnValue('mock-token');
     bcrypt.compare.mockResolvedValue(true);
     bcrypt.hash.mockResolvedValue('hashed_password');
   });
 
   describe('login', () => {
-    test('debería autenticar usuario correctamente', async () => {
+    test('debería autenticar usuario y devolver identityToken (Flow: Select Company)', async () => {
       // Setup
       prisma.user.findUnique.mockResolvedValue(mockUser);
-      prisma.userCompany.findFirst.mockResolvedValue(mockUserCompany);
-      prisma.refreshToken.create.mockResolvedValue({ token: 'abc' }); // CRÍTICO: mockear esto
-
+      
       // Ejecución
       const result = await authService.login({
         email: 'test@example.com',
         password: 'password123',
-        companyId: mockCompanyId,
       });
 
-      // Verificaciones
+      // Verificaciones (Updated to match auth.service.js logic)
       expect(result).toBeDefined();
-      expect(result.accessToken).toBe('mock-token');
-      expect(prisma.user.findUnique).toHaveBeenCalledWith({
-        where: { email: 'test@example.com' },
-      });
-      // Verificamos que se creó el refresh token
-      expect(prisma.refreshToken.create).toHaveBeenCalled();
+      
+      // FIX 2: Check for identityToken, not accessToken (Standard User Flow)
+      expect(result.identityToken).toBe('mock-token'); 
+      expect(result.mode).toBe('SELECT_COMPANY');
+      
+      // Verify companies are mapped correctly
+      expect(result.companies).toHaveLength(1);
+      expect(result.companies[0].id).toBe('company-1');
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+            where: { email: 'test@example.com' }
+        })
+      );
+      
+      // Note: refreshToken is NOT created in step 1 of your new flow, 
+      // so we should NOT expect it here.
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
     });
 
-    test('debería lanzar error si usuario no existe', async () => {
+    test('debería lanzar error si usuario no existe o es inválido', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
+      // FIX 3: Update error message expectation
       await expect(
         authService.login({
           email: 'nonexistent@example.com',
           password: 'password123',
-          companyId: mockCompanyId,
         })
-      ).rejects.toThrow(/Credenciales inválidas/);
+      ).rejects.toThrow(/Usuario inválido/); 
     });
   });
 
   describe('register', () => {
     test('debería registrar usuario correctamente', async () => {
-      // Datos de entrada (solo lo que register acepta)
       const registerData = {
         email: 'newuser@example.com',
         password: 'password123',
       };
 
-      // Mocks
-      prisma.user.findUnique.mockResolvedValue(null); // No existe
+      prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockResolvedValue({
         id: 'new-id',
         email: registerData.email,
         active: true
       });
 
-      // Ejecución
       const result = await authService.register(registerData);
 
-      // Verificaciones
       expect(result).toBeDefined();
       expect(bcrypt.hash).toHaveBeenCalledWith('password123', 10);
       expect(prisma.user.create).toHaveBeenCalledWith(expect.objectContaining({
