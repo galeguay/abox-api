@@ -4,6 +4,7 @@
     "description": "",
     "main": "api/index.js",
     "scripts": {
+        "swagger": "node swagger.js",
         "test": "NODE_OPTIONS=--experimental-vm-modules jest",
         "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
         "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
@@ -31,7 +32,9 @@
         "jsonwebtoken": "^9.0.3",
         "nodemailer": "^7.0.13",
         "pg": "^8.17.2",
-        "rate-limiter-flexible": "^9.1.1"
+        "rate-limiter-flexible": "^9.1.1",
+        "swagger-autogen": "^2.23.7",
+        "swagger-ui-express": "^5.0.1"
     },
     "devDependencies": {
         "@jest/globals": "^29.7.0",
