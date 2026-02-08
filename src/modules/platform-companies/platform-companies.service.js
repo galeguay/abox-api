@@ -1,13 +1,17 @@
 import prisma from '../../../prisma/client.js';
 import AppError from '../../errors/AppError.js';
 
-// Crear una nueva compañía
+
 export const createCompany = async (data) => {
-  const { name } = data;
+  const { name, taxId, email, phone, address } = data; 
 
   const company = await prisma.company.create({
     data: {
       name,
+      taxId,    // Agregado
+      email,    // Agregado
+      phone,    // Agregado
+      address,  // Agregado
       active: true,
     },
     select: {
@@ -15,22 +19,33 @@ export const createCompany = async (data) => {
       name: true,
       active: true,
       createdAt: true,
+      taxId: true, 
+      email: true,
     },
   });
 
   return company;
 };
-
-// Obtener todas las compañías
-export const getCompanies = async (page = 1, limit = 10, active) => {
+export const getCompanies = async (page = 1, limit = 10, active, search) => {
   const skip = (page - 1) * limit;
 
   const where = {};
+  
+  // 1. Filtro por estado
   if (active !== undefined) {
-    where.active = active === 'true';
+    where.active = active === 'true'; 
   }
 
-  const [companies, total] = await Promise.all([
+  // 2. Búsqueda (Search)
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { taxId: { contains: search, mode: 'insensitive' } }, // Agregamos búsqueda por CUIT también
+      { email: { contains: search, mode: 'insensitive' } }, // Agregamos búsqueda por Email
+    ];
+  }
+
+  const [rawCompanies, total] = await Promise.all([
     prisma.company.findMany({
       where,
       skip,
@@ -40,6 +55,18 @@ export const getCompanies = async (page = 1, limit = 10, active) => {
         name: true,
         active: true,
         createdAt: true,
+        
+        // --- Campos solicitados ---
+        taxId: true, 
+        email: true,
+
+        // --- Adaptación para el modelo Plan ---
+        plan: {
+          select: {
+            name: true, // Seleccionamos solo el nombre del plan relacionado
+          },
+        },
+        
         _count: {
           select: {
             users: true,
@@ -52,13 +79,20 @@ export const getCompanies = async (page = 1, limit = 10, active) => {
     prisma.company.count({ where }),
   ]);
 
+  // 3. Mapeo para devolver el formato correcto al frontend
+  const companies = rawCompanies.map((c) => ({
+    ...c,
+    // Si 'plan' es null (la empresa no tiene plan asignado), devolvemos null o un string por defecto.
+    plan: c.plan?.name || null, 
+  }));
+
   return {
     data: companies,
-    pagination: {
-      page,
-      limit,
+    meta: {
+      page: Number(page),
+      limit: Number(limit),
       total,
-      pages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit),
     },
   };
 };

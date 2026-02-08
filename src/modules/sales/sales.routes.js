@@ -21,7 +21,7 @@ router.get(
     '/companies/:companyId/sales',
     listSalesValidator,
     validateFields,
-    auditMiddleware('READ', 'SALE'),
+    //auditMiddleware('READ', 'SALE'),
     salesController.getSales
 );
 
@@ -30,14 +30,14 @@ router.post(
     '/companies/:companyId/sales',
     createSaleValidator,
     validateFields,
-    auditMiddleware('CREATE', 'SALE'),
+    //auditMiddleware('CREATE', 'SALE'),
     salesController.createSale
 );
 
 // GET /companies/:companyId/sales/:id - Ver detalle de venta
 router.get(
     '/companies/:companyId/sales/:id',
-    auditMiddleware('READ', 'SALE'),
+    //auditMiddleware('READ', 'SALE'),
     salesController.getSaleById
 );
 
@@ -47,7 +47,7 @@ router.put(
     '/companies/:companyId/sales/:id/cancel',
     cancelSaleValidator,
     validateFields,
-    auditMiddleware('UPDATE', 'SALE_CANCEL'), // Acción específica para auditoría
+    //auditMiddleware('UPDATE', 'SALE_CANCEL'), // Acción específica para auditoría
     salesController.cancelSale
 );
 

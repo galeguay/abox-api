@@ -22,7 +22,7 @@ router.get(
   '/companies/:companyId/warehouses',
   listWarehousesValidator,
   validateFields,
-  auditMiddleware('READ', 'WAREHOUSE'),
+  //auditMiddleware('READ', 'WAREHOUSE'),
   warehousesController.getWarehouses
 );
 
@@ -31,14 +31,14 @@ router.post(
   '/companies/:companyId/warehouses',
   createWarehouseValidator,
   validateFields,
-  auditMiddleware('CREATE', 'WAREHOUSE'),
+  //auditMiddleware('CREATE', 'WAREHOUSE'),
   warehousesController.createWarehouse
 );
 
 // GET /companies/:companyId/warehouses/:id - Obtener almacén
 router.get(
   '/companies/:companyId/warehouses/:id',
-  auditMiddleware('READ', 'WAREHOUSE'),
+  //auditMiddleware('READ', 'WAREHOUSE'),
   warehousesController.getWarehouseById
 );
 
@@ -47,7 +47,7 @@ router.put(
   '/companies/:companyId/warehouses/:id',
   updateWarehouseValidator,
   validateFields,
-  auditMiddleware('UPDATE', 'WAREHOUSE'),
+  //auditMiddleware('UPDATE', 'WAREHOUSE'),
   warehousesController.updateWarehouse
 );
 
@@ -55,7 +55,7 @@ router.get(
   '/companies/:companyId/warehouses/:id/stocks',
   listStocksValidator,
   validateFields,
-  auditMiddleware('READ', 'STOCK'),
+  //auditMiddleware('READ', 'STOCK'),
   warehousesController.getWarehouseStocks
 );
 

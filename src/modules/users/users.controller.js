@@ -4,19 +4,19 @@ import asyncWrapper from '../../middlewares/asyncWrapper.js';
 // ==================== MI PERFIL ====================
 
 export const getMe = asyncWrapper(async (req, res) => {
-  const user = await userService.getMyProfile(req.user.sub);
+  const user = await userService.getMyProfile(req.user.id);
   res.json({ ok: true, data: user });
 });
 
 export const updateMe = asyncWrapper(async (req, res) => {
-  const updated = await userService.updateMyProfile(req.user.sub, req.body);
+  const updated = await userService.updateMyProfile(req.user.id, req.body);
   res.json({ ok: true, data: updated });
 });
 
 export const changePassword = asyncWrapper(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const result = await userService.changeMyPassword(
-    req.user.sub,
+    req.user.id,
     currentPassword,
     newPassword
   );
@@ -24,18 +24,18 @@ export const changePassword = asyncWrapper(async (req, res) => {
 });
 
 export const getMyCompanies = asyncWrapper(async (req, res) => {
-  const companies = await userService.getMyCompanies(req.user.sub);
+  const companies = await userService.getMyCompanies(req.user.id);
   res.json({ ok: true, data: companies });
 });
 
 export const switchActiveCompany = asyncWrapper(async (req, res) => {
   const { companyId } = req.body;
-  const result = await userService.switchActiveCompany(req.user.sub, companyId);
+  const result = await userService.switchActiveCompany(req.user.id, companyId);
   res.json({ ok: true, data: result });
 });
 
 export const getMyPermissions = asyncWrapper(async (req, res) => {
-  const permissions = await userService.getMyPermissions(req.user.sub);
+  const permissions = await userService.getMyPermissions(req.user.id);
   res.json({ ok: true, data: permissions });
 });
 
@@ -66,7 +66,7 @@ export const inviteUserToCompany = asyncWrapper(async (req, res) => {
     companyId,
     email,
     role,
-    req.user.sub
+    req.user.id
   );
   res.status(201).json({ ok: true, data: result });
 });
@@ -78,7 +78,7 @@ export const changeUserRole = asyncWrapper(async (req, res) => {
     companyId,
     userId,
     role,
-    req.user.sub
+    req.user.id
   );
   res.json({ ok: true, data: updated });
 });
@@ -88,7 +88,7 @@ export const deactivateUserInCompany = asyncWrapper(async (req, res) => {
   const result = await userService.deactivateUserInCompany(
     companyId,
     userId,
-    req.user.sub
+    req.user.id
   );
   res.json({ ok: true, data: result });
 });
@@ -98,7 +98,7 @@ export const removeUserFromCompany = asyncWrapper(async (req, res) => {
   const result = await userService.removeUserFromCompany(
     companyId,
     userId,
-    req.user.sub
+    req.user.id
   );
   res.status(204).json({ ok: true, data: result });
 });
@@ -157,4 +157,9 @@ export const setupPassword = asyncWrapper(async (req, res) => {
   const { token, newPassword } = req.body;
   const result = await userService.completeInvitation(token, newPassword);
   res.json({ ok: true, data: result });
+});
+
+export const createUser = asyncWrapper(async (req, res) => {
+  const created = await userService.default.createUser(req.body);
+  res.status(201).json({ ok: true, data: created });
 });

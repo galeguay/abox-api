@@ -16,19 +16,13 @@ export const createProduct = asyncWrapper(async (req, res) => {
 
 export const getProducts = asyncWrapper(async (req, res) => {
     const { companyId } = req.params;
-    const { page, limit, search, active } = req.query;
-
     const result = await productsService.getProducts(companyId, {
-        page: page ? parseInt(page) : 1,
-        limit: limit ? parseInt(limit) : 10,
-        search,
-        active: active === 'true',
+        ...req.query,
+        page: req.query.page ? parseInt(req.query.page) : 1,
+        limit: req.query.limit ? parseInt(req.query.limit) : 10,
     });
 
-    res.json({
-        success: true,
-        ...result,
-    });
+    res.json({ success: true, ...result });
 });
 
 export const getProductById = asyncWrapper(async (req, res) => {

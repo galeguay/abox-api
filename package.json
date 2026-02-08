@@ -10,6 +10,9 @@
         "dev": "nodemon api/index.js",
         "start": "node api/index.js"
     },
+    "prisma": {
+        "seed": "node prisma/seed.js"
+    },
     "keywords": [],
     "author": "",
     "license": "ISC",
@@ -27,7 +30,8 @@
         "http-errors": "^2.0.1",
         "jsonwebtoken": "^9.0.3",
         "nodemailer": "^7.0.13",
-        "pg": "^8.17.2"
+        "pg": "^8.17.2",
+        "rate-limiter-flexible": "^9.1.1"
     },
     "devDependencies": {
         "@jest/globals": "^29.7.0",

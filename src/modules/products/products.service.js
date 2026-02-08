@@ -1,7 +1,6 @@
 import prisma from '../../../prisma/client.js';
 import { AppError } from '../../errors/index.js';
 
-
 export const createProduct = async (companyId, data) => {
     return prisma.$transaction(async (tx) => {
         // 1. Validar SKU único por empresa dentro de la transacción
@@ -14,6 +13,7 @@ export const createProduct = async (companyId, data) => {
             }
         }
 
+        // Creamos el producto
         const product = await tx.product.create({
             data: {
                 name: data.name,
@@ -22,9 +22,11 @@ export const createProduct = async (companyId, data) => {
                 price: data.price || 0,
                 active: true,
                 productCategoryId: data.categoryId || null,
+                barcode: data.barcode || null,
             },
         });
 
+        // Registro de precio inicial
         if (data.price) {
             await tx.productPrice.create({
                 data: {
@@ -36,6 +38,7 @@ export const createProduct = async (companyId, data) => {
             });
         }
 
+        // Registro de costo inicial
         if (data.cost) {
             await tx.productCost.create({
                 data: {
@@ -52,8 +55,38 @@ export const createProduct = async (companyId, data) => {
 };
 
 export const getProducts = async (companyId, filters = {}) => {
-    const { page = 1, limit = 10, search, active, categoryId } = filters;
-    const skip = (page - 1) * limit;
+    // 1. Desestructuración segura
+    const {
+        page = 1,
+        limit = 10,
+        search,
+        active,
+        categoryId,
+        sortBy = 'createdAt',
+        order = 'desc',
+        minPrice,
+        maxPrice,
+        fromDate,
+        toDate,
+        stockStatus
+    } = filters;
+
+    // 2. Sanitización de Paginación (Evita números negativos o textos)
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.max(1, Number(limit) || 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    // 3. Sanitización de Precios
+    const parsedMin = parseFloat(minPrice);
+    const parsedMax = parseFloat(maxPrice);
+    const hasMinPrice = !isNaN(parsedMin);
+    const hasMaxPrice = !isNaN(parsedMax);
+
+    // 4. Sanitización de Fechas
+    const dFrom = fromDate ? new Date(fromDate) : null;
+    const dTo = toDate ? new Date(toDate) : null;
+    const hasFromDate = dFrom && !isNaN(dFrom.getTime());
+    const hasToDate = dTo && !isNaN(dTo.getTime());
 
     const where = {
         companyId,
@@ -63,16 +96,54 @@ export const getProducts = async (companyId, filters = {}) => {
                 { sku: { contains: search, mode: 'insensitive' } }
             ]
         }),
-        ...(active !== undefined && { active: active === 'true' || active === true }),
-        ...(categoryId && { productCategoryId: categoryId }),
+        // Manejo robusto de booleans (acepta true, "true", false, "false")
+        ...(active !== undefined && active !== '' && { 
+            active: String(active) === 'true' 
+        }),
+        ...(categoryId && categoryId !== 'all' && { productCategoryId: categoryId }),
+
+        // Rango de Precios (Solo agrega si los números son válidos)
+        ...((hasMinPrice || hasMaxPrice) && {
+            price: {
+                ...(hasMinPrice && { gte: parsedMin }),
+                ...(hasMaxPrice && { lte: parsedMax }),
+            }
+        }),
+
+        // Rango de Fechas (Solo agrega si las fechas son válidas)
+        ...((hasFromDate || hasToDate) && {
+            createdAt: {
+                ...(hasFromDate && { gte: dFrom }),
+                ...(hasToDate && { lte: dTo }),
+            }
+        }),
+
+        // Estado de Stock
+        ...(stockStatus === 'inStock' && {
+            stocks: { some: { quantity: { gt: 0 } } }
+        }),
+        ...(stockStatus === 'outOfStock' && {
+            stocks: { every: { quantity: { lte: 0 } } }
+        })
     };
+
+    // 5. Ordenamiento Dinámico
+    let orderBy = {};
+    if (sortBy === 'price') {
+        orderBy = { price: order };
+    } else {
+        // Protección extra: solo permitimos ordenar por campos que existen para evitar errores
+        const allowedSorts = ['createdAt', 'updatedAt', 'name', 'sku', 'price'];
+        const safeSortBy = allowedSorts.includes(sortBy) ? sortBy : 'createdAt';
+        orderBy = { [safeSortBy]: order };
+    }
 
     const [products, total] = await Promise.all([
         prisma.product.findMany({
             where,
             skip,
-            take: limit,
-            orderBy: { createdAt: 'desc' },
+            take: limitNum,
+            orderBy,
             include: {
                 _count: { select: { stocks: true } },
                 productCategory: { select: { id: true, name: true } },
@@ -89,10 +160,10 @@ export const getProducts = async (companyId, filters = {}) => {
     return {
         data: products,
         pagination: {
-            page,
-            limit,
+            page: pageNum,
+            limit: limitNum,
             total,
-            pages: Math.ceil(total / limit),
+            pages: Math.ceil(total / limitNum),
         },
     };
 };
@@ -107,7 +178,7 @@ export const getProductById = async (companyId, productId) => {
             productCategory: { select: { id: true, name: true } },
             costs: {
                 orderBy: { createdAt: 'desc' },
-                take: 5 // Historial reciente de costos
+                take: 5 
             }
         },
     });
@@ -128,7 +199,6 @@ export const updateProduct = async (companyId, productId, data) => {
         throw new AppError('Producto no encontrado', 404);
     }
 
-    // Validar SKU único si cambia
     if (data.sku && data.sku !== product.sku) {
         const existingSku = await prisma.product.findFirst({
             where: { companyId, sku: data.sku },
@@ -155,6 +225,8 @@ export const updateProduct = async (companyId, productId, data) => {
                 where: { productId },
                 orderBy: { createdAt: 'desc' }
             });
+            
+            // Convertimos a Number para comparar correctamente precios (Prisma usa Decimal a veces)
             if (!lastPrice || Number(lastPrice.price) !== Number(data.price)) {
                 await tx.productPrice.create({
                     data: {
@@ -168,7 +240,6 @@ export const updateProduct = async (companyId, productId, data) => {
         }
 
         if (data.cost) {
-            // Verificamos el último costo para no duplicar si es el mismo
             const lastCost = await tx.productCost.findFirst({
                 where: { productId },
                 orderBy: { createdAt: 'desc' }
@@ -198,14 +269,12 @@ export const deleteProduct = async (companyId, productId) => {
         throw new AppError('Producto no encontrado', 404);
     }
 
-    // Verificamos si el producto tiene historial que impida borrarlo
     const [hasStock, hasSales, hasPurchases] = await Promise.all([
-        prisma.stock.findFirst({ where: { productId, quantity: { gt: 0 } } }), // Solo importa si tiene cantidad > 0
+        prisma.stock.findFirst({ where: { productId, quantity: { gt: 0 } } }),
         prisma.saleItem.findFirst({ where: { productId } }),
         prisma.purchaseItem.findFirst({ where: { productId } })
     ]);
 
-    // Si tiene stock actual, no dejamos ni borrar ni desactivar (regla de negocio sugerida)
     if (hasStock) {
         throw new AppError('No puedes eliminar un producto que tiene stock físico actual. Haz un ajuste de salida primero.', 409);
     }
@@ -213,14 +282,17 @@ export const deleteProduct = async (companyId, productId) => {
     const hasHistory = hasSales || hasPurchases;
 
     if (hasHistory) {
+        // Soft delete: Desactivar y liberar SKU
         await prisma.product.update({
             where: { id: productId },
-            data: { active: false, sku: `${product.sku}-DELETED-${Date.now()}` }
+            data: { 
+                active: false, 
+                sku: `${product.sku}-DELETED-${Date.now()}` // Liberamos el SKU original
+            }
         });
         return { message: 'Producto desactivado correctamente (tenía historial asociado)' };
     }
 
-    // Si está limpio, borrado físico
     await prisma.product.delete({ where: { id: productId } });
     return { message: 'Producto eliminado permanentemente' };
 };

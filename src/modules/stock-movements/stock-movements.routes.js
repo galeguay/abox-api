@@ -30,7 +30,7 @@ router.get(
     '/',
     listStockMovementsValidator,
     validateFields,
-    auditMiddleware('READ', 'STOCK_MOVEMENT'),
+    //auditMiddleware('READ', 'STOCK_MOVEMENT'),
     getStockMovements
 );
 
@@ -41,7 +41,7 @@ router.post(
     '/',
     createStockMovementValidator,
     validateFields,
-    auditMiddleware('CREATE', 'STOCK_MOVEMENT'),
+    //auditMiddleware('CREATE', 'STOCK_MOVEMENT'),
     createStockMovement
 );
 
@@ -50,7 +50,7 @@ router.post(
     '/transfer',
     transferStockValidator,
     validateFields,
-    auditMiddleware('CREATE', 'STOCK_TRANSFER'),
+    //auditMiddleware('CREATE', 'STOCK_TRANSFER'),
     transferStock
 );
 

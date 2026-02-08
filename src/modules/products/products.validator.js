@@ -54,4 +54,31 @@ export const listProductsValidator = [
         .optional()
         .isLength({ min: 1 })
         .withMessage('search no puede estar vacío'),
+    query('categoryId')
+        .optional()
+        .isUUID()
+        .withMessage('categoryId debe ser un UUID válido'),
+    query('sortBy')
+        .optional()
+        .isIn(['price', 'name', 'createdAt'])
+        .withMessage('El criterio de ordenamiento no es válido'),
+    query('order')
+        .optional()
+        .isIn(['asc', 'desc'])
+        .withMessage('El orden debe ser asc o desc'),
+    query('minPrice')
+        .optional()
+        .isFloat({ min: 0 }),
+    query('maxPrice')
+        .optional()
+        .isFloat({ min: 0 }),
+    query('stockStatus')
+        .optional()
+        .isIn(['all', 'inStock', 'outOfStock', 'lowStock']),
+    query('fromDate')
+        .optional()
+        .isISO8601(),
+    query('toDate')
+        .optional()
+        .isISO8601(),
 ];

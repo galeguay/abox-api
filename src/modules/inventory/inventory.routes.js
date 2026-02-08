@@ -21,7 +21,7 @@ router.get(
   '/companies/:companyId/products/:productId/stock',
   getStockValidator,
   validateFields,
-  auditMiddleware('READ', 'INVENTORY'),
+  //auditMiddleware('READ', 'INVENTORY'),
   inventoryController.getStockByProduct
 );
 
@@ -30,7 +30,7 @@ router.get(
   '/companies/:companyId/products/:productId/total',
   getTotalStockValidator,
   validateFields,
-  auditMiddleware('READ', 'INVENTORY'),
+  //auditMiddleware('READ', 'INVENTORY'),
   inventoryController.getTotalStock
 );
 
@@ -38,7 +38,7 @@ router.get(
 router.get(
   '/companies/:companyId/inventory/report',
   getInventoryReportValidator,
-  auditMiddleware('READ', 'INVENTORY'),
+  //auditMiddleware('READ', 'INVENTORY'),
   inventoryController.getInventoryReport
 );
 

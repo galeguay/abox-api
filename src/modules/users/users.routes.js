@@ -4,13 +4,13 @@ import requireRole from '../../middlewares/requireRole.js';
 import validateFields from '../../middlewares/validateFields.js';
 import { emailUniqueOnUpdate } from '../../middlewares/emailUnique.js';
 import { auditMiddleware } from '../../middlewares/auditMiddleware.js';
-// IMPORTACIÓN DE CONSTANTES
 import { AUDIT_ACTIONS, AUDIT_RESOURCES } from '../../constants/audit.constants.js';
 
 import {
     getMe,
     updateMe,
     changePassword,
+    createUser,
     getMyCompanies,
     switchActiveCompany,
     getMyPermissions,
@@ -35,6 +35,7 @@ import {
     changePasswordValidator,
     updateUserValidator,
     inviteUserValidator,
+    createUserValidator,
     changeUserRoleValidator,
     listUsersValidator,
     adminListUsersValidator,
@@ -53,12 +54,12 @@ router.post(
 );
 
 // Middleware global para rutas siguientes
-router.use(authMiddleware('COMPANY'));
+router.use(authMiddleware());
 
 // GET /users/me - Ver mi perfil
 router.get(
-    '/me', 
-    auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.USER_PROFILE), 
+    '/me',
+    //auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.USER_PROFILE),
     getMe
 );
 
@@ -68,9 +69,9 @@ router.put(
     updateMeValidator,
     validateFields,
     emailUniqueOnUpdate({
-        getUserId: (req) => req.user.sub,
+        getUserId: (req) => req.user.id,
     }),
-    auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.USER_PROFILE),
+    //auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.USER_PROFILE),
     updateMe
 );
 
@@ -79,14 +80,14 @@ router.put(
     '/me/password',
     changePasswordValidator,
     validateFields,
-    auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.USER_PASSWORD),
+    //auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.USER_PASSWORD),
     changePassword
 );
 
 // GET /users/me/companies - Ver mis empresas
 router.get(
-    '/me/companies', 
-    auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.USER_COMPANIES), 
+    '/me/companies',
+    //auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.USER_COMPANIES),
     getMyCompanies
 );
 
@@ -95,14 +96,14 @@ router.put(
     '/me/switch-company',
     switchCompanyValidator,
     validateFields,
-    auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.ACTIVE_COMPANY),
+    //auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.ACTIVE_COMPANY),
     switchActiveCompany
 );
 
 // GET /users/me/permissions - Ver mis permisos
 router.get(
-  '/me/permissions',
-    auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.USER_PERMISSIONS),
+    '/me/permissions',
+    //auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.USER_PERMISSIONS),
     getMyPermissions
 );
 
@@ -115,9 +116,10 @@ router.get('/roles/:role/permissions', getRolePermissions);
 // Middleware para rutas de administración
 router.use(requireRole(['OWNER', 'ADMIN']));
 
+//Obtener todos los ususarios
 router.get(
-    '/', 
-    requireRole(['OWNER']), 
+    '/',
+    requireRole(['OWNER']),
     adminListUsersValidator,
     validateFields,
     getUsers
@@ -128,14 +130,14 @@ router.get(
     '/company/:companyId',
     listUsersValidator,
     validateFields,
-    auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.COMPANY_USERS),
+    //auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.COMPANY_USERS),
     getCompanyUsers
 );
 
-// GET /users/company/:companyId/:userId - Obtener un usuario específico
+// GET /users/company/:companyId/:userId - Obtener un usuario específico dentro de una empresa
 router.get(
     '/company/:companyId/:userId',
-    auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.COMPANY_USER),
+    //auditMiddleware(AUDIT_ACTIONS.READ, AUDIT_RESOURCES.COMPANY_USER),
     getCompanyUserById
 );
 
@@ -144,7 +146,7 @@ router.post(
     '/company/:companyId/invite',
     inviteUserValidator,
     validateFields,
-    auditMiddleware(AUDIT_ACTIONS.CREATE, AUDIT_RESOURCES.COMPANY_USER_INVITE),
+    //auditMiddleware(AUDIT_ACTIONS.CREATE, AUDIT_RESOURCES.COMPANY_USER_INVITE),
     inviteUserToCompany
 );
 
@@ -153,26 +155,25 @@ router.put(
     '/company/:companyId/:userId/role',
     changeUserRoleValidator,
     validateFields,
-    auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.COMPANY_USER_ROLE),
+    //auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.COMPANY_USER_ROLE),
     changeUserRole
 );
 
 // PATCH /users/company/:companyId/:userId/deactivate - Desactivar usuario
 router.patch(
     '/company/:companyId/:userId/deactivate',
-    auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.COMPANY_USER_DEACTIVATE),
+    //auditMiddleware(AUDIT_ACTIONS.UPDATE, AUDIT_RESOURCES.COMPANY_USER_DEACTIVATE),
     deactivateUserInCompany
 );
 
 // DELETE /users/company/:companyId/:userId - Remover usuario de empresa
 router.delete(
     '/company/:companyId/:userId',
-    auditMiddleware(AUDIT_ACTIONS.DELETE, AUDIT_RESOURCES.COMPANY_USER),
+    //auditMiddleware(AUDIT_ACTIONS.DELETE, AUDIT_RESOURCES.COMPANY_USER),
     removeUserFromCompany
 );
 
-// Rutas heredadas de SuperAdmin
-router.get('/', requireRole(['OWNER']), getUsers);
+
 router.get('/:id', requireRole(['OWNER', 'ADMIN']), getUserById);
 
 router.put(

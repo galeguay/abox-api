@@ -1,5 +1,5 @@
 import { body, query } from 'express-validator';
-import { AVAILABLE_ROLES } from '../../constants/rols.js';
+import { AVAILABLE_ROLES } from '../../constants/roles.js';
 
 export const updateMeValidator = [
     body('firstName')
@@ -112,4 +112,38 @@ export const switchCompanyValidator = [
     body('companyId')
         .notEmpty()
         .withMessage('companyId es requerido'),
+];
+
+export const createUserValidator = [
+  body('email')
+    .isEmail()
+    .withMessage('email debe ser un correo válido'),
+
+  body('password')
+    .isLength({ min: 8 })
+    .withMessage('La contraseña debe tener al menos 8 caracteres')
+    .matches(/[A-Z]/)
+    .withMessage('Debe contener al menos una mayúscula')
+    .matches(/[0-9]/)
+    .withMessage('Debe contener al menos un número'),
+
+  body('firstName')
+    .optional()
+    .isLength({ min: 1 })
+    .withMessage('firstName no puede estar vacío'),
+
+  body('lastName')
+    .optional()
+    .isLength({ min: 1 })
+    .withMessage('lastName no puede estar vacío'),
+
+  body('type')
+    .optional()
+    .isIn(['PLATFORM', 'COMPANY'])
+    .withMessage('type inválido. Opciones: PLATFORM, COMPANY'),
+
+  body('active')
+    .optional()
+    .isBoolean()
+    .withMessage('active debe ser un booleano'),
 ];

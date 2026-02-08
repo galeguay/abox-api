@@ -22,7 +22,7 @@ router.get(
     '/companies/:companyId/orders',
     listOrdersValidator,
     validateFields,
-    auditMiddleware('READ', 'ORDER'),
+    //auditMiddleware('READ', 'ORDER'),
     ordersController.getOrders
 );
 
@@ -31,14 +31,14 @@ router.post(
     '/companies/:companyId/orders',
     createOrderValidator,
     validateFields,
-    auditMiddleware('CREATE', 'ORDER'),
+    //auditMiddleware('CREATE', 'ORDER'),
     ordersController.createOrder
 );
 
 // GET /companies/:companyId/orders/:id - Obtener orden
 router.get(
     '/companies/:companyId/orders/:id',
-    auditMiddleware('READ', 'ORDER'),
+    //auditMiddleware('READ', 'ORDER'),
     ordersController.getOrderById
 );
 
@@ -47,7 +47,7 @@ router.put(
     '/companies/:companyId/orders/:id/status',
     updateOrderStatusValidator,
     validateFields,
-    auditMiddleware('UPDATE', 'ORDER'),
+    //auditMiddleware('UPDATE', 'ORDER'),
     ordersController.updateOrderStatus
 );
 
@@ -56,7 +56,7 @@ router.post(
     '/companies/:companyId/orders/:id/payments',
     addOrderPaymentValidator,
     validateFields,
-    auditMiddleware('CREATE', 'ORDER_PAYMENT'),
+    //auditMiddleware('CREATE', 'ORDER_PAYMENT'),
     ordersController.addOrderPayment
 );
 
@@ -65,7 +65,7 @@ router.put(
     '/companies/:companyId/orders/:id',
     updateOrderValidator,
     validateFields,
-    auditMiddleware('UPDATE', 'ORDER'),
+    //auditMiddleware('UPDATE', 'ORDER'),
     ordersController.updateOrder
 );
 export default router;

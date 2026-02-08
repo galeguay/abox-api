@@ -11,14 +11,33 @@ enum MovementType {
     OUT
 }
 
+model Plan {
+    id       String  @id @default(uuid())
+    name     String  @unique // Ej: "Plan Emprendedor"
+    code     String  @unique // Ej: "STARTER_MONTHLY"
+    price    Decimal @default(0)
+    currency String  @default("USD")
+
+    // Límites del plan guardados en JSON
+    // Ej: { "maxUsers": 5, "maxWarehouses": 1, "canExport": false }
+    limits Json? @default("{}")
+
+    isActive  Boolean  @default(true)
+    createdAt DateTime @default(now())
+
+    companies Company[] // Relación inversa
+}
+
 model Company {
     id        String   @id @default(uuid())
-    name      String
-    taxId     String?  @unique // CUIT, RUT, NIT, etc.
+    name      String   @unique
+    taxId     String?  @unique
     email     String?
     phone     String?
     address   String?
     logoUrl   String?
+    planId    String?
+    plan      Plan?    @relation(fields: [planId], references: [id])
     active    Boolean  @default(true)
     config    Json?    @default("{}")
     createdAt DateTime @default(now())
@@ -59,6 +78,10 @@ enum UserType {
 
 model User {
     id                String    @id @default(uuid())
+    firstName         String
+    lastName          String
+    alias             String?
+    phone             String?   @unique
     email             String    @unique
     password          String
     active            Boolean   @default(true)
@@ -97,6 +120,7 @@ model Product {
     active    Boolean  @default(true)
     createdAt DateTime @default(now())
     price     Decimal  @default(0)
+    barcode   String?
 
     prices        ProductPrice[]
     stocks        Stock[]
@@ -120,6 +144,7 @@ model Product {
     @@unique([companyId, sku])
     @@index([companyId])
     @@index([companyId, active])
+    @@index([companyId, barcode])
 }
 
 model ProductComponent {

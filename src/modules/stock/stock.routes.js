@@ -35,7 +35,7 @@ router.get(
     '/companies/:companyId/products/:productId/warehouses/:warehouseId',
     getStockValidator, // Valida que companyId y productId existan
     validateFields,     // Ejecuta la validación antes de pasar al controller
-    auditMiddleware('READ', 'STOCK'),
+    //auditMiddleware('READ', 'STOCK'),
     getStockByProduct
 );
 
@@ -45,7 +45,7 @@ router.get(
     '/companies/:companyId/products/:productId/total',
     getStockValidator,
     validateFields,
-    auditMiddleware('READ', 'STOCK'),
+    //auditMiddleware('READ', 'STOCK'),
     getTotalStock
 );
 
@@ -57,7 +57,7 @@ router.post(
     '/companies/:companyId/movements',
     createStockMovementValidator,
     validateFields,
-    auditMiddleware('CREATE', 'STOCK_MOVEMENT'),
+    //auditMiddleware('CREATE', 'STOCK_MOVEMENT'),
     createStockMovement
 );
 
@@ -67,7 +67,7 @@ router.post(
     '/companies/:companyId/transfer',
     transferStockValidator,
     validateFields,
-    auditMiddleware('CREATE', 'STOCK_TRANSFER'),
+    //auditMiddleware('CREATE', 'STOCK_TRANSFER'),
     transferStock
 );
 
@@ -77,7 +77,7 @@ router.get(
     '/companies/:companyId/movements',
     listStockMovementsValidator,
     validateFields,
-    auditMiddleware('READ', 'STOCK_MOVEMENT'),
+    //auditMiddleware('READ', 'STOCK_MOVEMENT'),
     getStockMovements
 );
 

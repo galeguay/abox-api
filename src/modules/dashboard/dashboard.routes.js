@@ -20,7 +20,7 @@ router.get(
     '/companies/:companyId/dashboard',
     getDashboardValidator,
     validateFields,
-    auditMiddleware('READ', 'DASHBOARD'), // Registramos quién vio el dashboard
+    //auditMiddleware('READ', 'DASHBOARD'), // Registramos quién vio el dashboard
     dashboardController.getDashboardStats
 );
 

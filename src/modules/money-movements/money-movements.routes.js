@@ -21,7 +21,7 @@ router.get(
     '/companies/:companyId/money-movements/reports/summary',
     listMoneyMovementsValidator,
     validateFields,
-    auditMiddleware('READ', 'MONEY_MOVEMENT'),
+    //auditMiddleware('READ', 'MONEY_MOVEMENT'),
     moneyMovementsController.getMoneyMovementsReport
 );
 
@@ -30,7 +30,7 @@ router.get(
     '/companies/:companyId/money-movements',
     listMoneyMovementsValidator,
     validateFields,
-    auditMiddleware('READ', 'MONEY_MOVEMENT'),
+    //auditMiddleware('READ', 'MONEY_MOVEMENT'),
     moneyMovementsController.getMoneyMovements
 );
 
@@ -39,14 +39,14 @@ router.post(
     '/companies/:companyId/money-movements',
     createMoneyMovementValidator,
     validateFields,
-    auditMiddleware('CREATE', 'MONEY_MOVEMENT'),
+    //auditMiddleware('CREATE', 'MONEY_MOVEMENT'),
     moneyMovementsController.createMoneyMovement
 );
 
 // GET /companies/:companyId/money-movements/:id - Obtener movimiento
 router.get(
     '/companies/:companyId/money-movements/:id',
-    auditMiddleware('READ', 'MONEY_MOVEMENT'),
+    //auditMiddleware('READ', 'MONEY_MOVEMENT'),
     moneyMovementsController.getMoneyMovementById
 );
 
@@ -55,14 +55,14 @@ router.put(
     '/companies/:companyId/money-movements/:id',
     updateMoneyMovementValidator,
     validateFields,
-    auditMiddleware('UPDATE', 'MONEY_MOVEMENT'),
+    //auditMiddleware('UPDATE', 'MONEY_MOVEMENT'),
     moneyMovementsController.updateMoneyMovement
 );
 
 // DELETE /companies/:companyId/money-movements/:id - Eliminar movimiento
 router.delete(
     '/companies/:companyId/money-movements/:id',
-    auditMiddleware('DELETE', 'MONEY_MOVEMENT'),
+    //auditMiddleware('DELETE', 'MONEY_MOVEMENT'),
     moneyMovementsController.deleteMoneyMovement
 );
 

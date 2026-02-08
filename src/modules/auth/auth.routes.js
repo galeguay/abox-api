@@ -11,7 +11,8 @@ import {
     forgotPassword,
     selectCompanyController,
     resetPassword,
-    logoutAll
+    logoutAll,
+    me
 } from './auth.controller.js';
 
 import {
@@ -44,6 +45,12 @@ router.post(
     selectCompanyValidator,
     validateFields,
     selectCompanyController);
+
+router.get(
+    "/me",
+    authMiddleware(),
+    me
+);
 
 // Refresh token
 router.post('/refresh', refreshToken);

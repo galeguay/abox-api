@@ -7,6 +7,29 @@ export const createCompanyValidator = [
     .withMessage('name es requerido')
     .isLength({ min: 2 })
     .withMessage('name debe tener al menos 2 caracteres'),
+  
+  // Nuevos campos
+  body('taxId')
+    .optional({ checkFalsy: true }) // Permite que sea null o string vacío, pero si tiene datos valida
+    .isString()
+    .trim()
+    .withMessage('taxId debe ser un texto'),
+  
+  body('email')
+    .optional({ checkFalsy: true })
+    .isEmail()
+    .withMessage('Debe proporcionar un email válido')
+    .normalizeEmail(), // Sanitización básica
+  
+  body('phone')
+    .optional({ checkFalsy: true })
+    .isString()
+    .trim(),
+  
+  body('address')
+    .optional({ checkFalsy: true })
+    .isString()
+    .trim(),
 ];
 
 // Validador para actualizar una compañía
@@ -15,10 +38,30 @@ export const updateCompanyValidator = [
     .optional()
     .isLength({ min: 2 })
     .withMessage('name debe tener al menos 2 caracteres'),
+  
   body('active')
     .optional()
     .isBoolean()
     .withMessage('active debe ser un booleano'),
+
+  // Nuevos campos para actualización
+  body('taxId')
+    .optional()
+    .isString()
+    .trim(),
+  
+  body('email')
+    .optional()
+    .isEmail()
+    .withMessage('Debe ser un email válido'),
+  
+  body('phone')
+    .optional()
+    .isString(),
+    
+  body('address')
+    .optional()
+    .isString(),
 ];
 
 // Validador para listar compañías con paginación y filtros
@@ -35,6 +78,11 @@ export const listCompaniesValidator = [
     .optional()
     .isBoolean()
     .withMessage('active debe ser un booleano'),
+  query('search')
+    .optional()
+    .isString()
+    .trim()
+    .escape(),
 ];
 
 // Validador para asignar un usuario a una compañía

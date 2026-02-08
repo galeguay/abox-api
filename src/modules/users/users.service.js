@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import AppError from '../../errors/AppError.js';
 import { logAction } from '../../platform/audit/platform.audit.service.js';
-import { ROLES } from '../../constants/rols.js';
+import { isValidRole, getAvailableRoles } from '../../constants/roles.js';
 import { AUDIT_ACTIONS, AUDIT_RESOURCES } from '../../constants/audit.constants.js';
 
 const USER_SELECT = {
@@ -13,40 +13,33 @@ const USER_SELECT = {
     createdAt: true,
 };
 
-// ==================== MI PERFIL ====================
+// users.service.js
 
-// Obtener mi perfil
 export const getMyProfile = async (userId) => {
     const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
             id: true,
-            email: true,
             firstName: true,
             lastName: true,
+            phone: true,
+            alias: true,
+            email: true,
             active: true,
             createdAt: true,
-            updatedAt: true,
+            type: true,
             companies: {
-                where: { active: true }, // Solo mostrar empresas donde estoy activo localmente
+                where: { active: true },
                 select: {
                     role: true,
-                    active: true, // Ver mi estado en esa empresa
-                    company: {
-                        select: {
-                            id: true,
-                            name: true,
-                        },
-                    },
+                    active: true,
+                    company: { select: { id: true, name: true, logoUrl: true } }, // Agregué logoUrl por si acaso
                 },
             },
         },
     });
 
-    if (!user) {
-        throw new AppError('Usuario no encontrado', 404);
-    }
-
+    if (!user) throw new AppError('Usuario no encontrado', 404);
     return user;
 };
 
@@ -286,8 +279,8 @@ export const getCompanyUserById = async (companyId, userId) => {
 };
 
 export const inviteUserToCompany = async (companyId, email, role, invitedBy) => {
-    const validRoles = getAvailableRoles().map(r => r.name);
-    if (!validRoles.includes(role)) {
+
+    if (!isValidRole(role)) {
         throw new AppError('Rol inválido', 400);
     }
 
@@ -333,7 +326,7 @@ export const inviteUserToCompany = async (companyId, email, role, invitedBy) => 
             emailData = {
                 type: 'NEW_USER_INVITE',
                 email,
-                token, 
+                token,
                 companyName: company.name
             };
         }
@@ -442,12 +435,10 @@ export const completeInvitation = async (token, newPassword) => {
 
 // Cambiar rol de usuario en empresa
 export const changeUserRole = async (companyId, userId, newRole, changedBy) => {
-    // Validar Rol
-    const validRoles = getAvailableRoles().map(r => r.name);
-    if (!validRoles.includes(newRole)) {
+
+    if (!isValidRole(newRole)) {
         throw new AppError('Rol inválido', 400);
     }
-
     const userCompany = await prisma.userCompany.findUnique({
         where: {
             userId_companyId: {
@@ -513,7 +504,7 @@ export const deactivateUserInCompany = async (companyId, userId, deactivatedBy) 
 
     const updated = await prisma.userCompany.update({
         where: { id: userCompany.id },
-        data: { active: false }, 
+        data: { active: false },
         select: {
             id: true,
             active: true,
@@ -610,37 +601,6 @@ export const removeUserFromCompany = async (companyId, userId, removedBy) => {
     return { message: 'Usuario removido de la compañía correctamente' };
 };
 
-// ==================== ROLES Y PERMISOS ====================
-
-export const getAvailableRoles = () => {
-    return [
-        {
-            name: ROLES.OWNER,
-            description: 'Dueño de la empresa',
-            permissions: ['ALL'],
-        },
-        {
-            name: ROLES.ADMIN,
-            description: 'Acceso completo a la empresa',
-            permissions: ['manage_users', 'manage_settings'],
-        },
-        {
-            name: ROLES.MANAGER,
-            description: 'Gestión de operaciones',
-            permissions: ['manage_products', 'manage_sales'],
-        },
-        {
-            name: ROLES.EMPLOYEE,
-            description: 'Usuario operativo',
-            permissions: ['view_products', 'manage_sales'],
-        },
-        {
-            name: ROLES.READ_ONLY,
-            description: 'Solo lectura',
-            permissions: ['view_products', 'view_reports'],
-        },
-    ];
-};
 
 // Obtener permisos de un rol
 export const getRolePermissions = (role) => {
@@ -729,10 +689,41 @@ const setActive = async (id, active) => {
     });
 };
 
+const createUser = async (data) => {
+  const { email, password, firstName, lastName, type, active } = data;
+
+  // Chequeo de unicidad (sin middleware)
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) throw new AppError('Ya existe un usuario con ese email', 409);
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const created = await prisma.user.create({
+    data: {
+      email,
+      password: hashedPassword,
+      firstName: firstName ?? '',
+      lastName: lastName ?? '',
+      type: type ?? 'PLATFORM',
+      active: typeof active === 'boolean' ? active : true,
+
+      // Sin invitación
+      invitationToken: null,
+      invitationExpires: null,
+    },
+    select: USER_SELECT,
+  });
+
+  return created;
+};
+
+
 export default {
     getById,
     getAll,
+    createUser,
     updateUser,
     changePassword,
     setActive,
 };
+

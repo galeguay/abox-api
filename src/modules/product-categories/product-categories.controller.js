@@ -1,5 +1,5 @@
 import asyncWrapper from '../../middlewares/asyncWrapper.js';
-import * as categoriesService from './productCategories.service.js';
+import * as categoriesService from './product-categories.service.js';
 
 export const createCategory = asyncWrapper(async (req, res) => {
   const { companyId } = req.params;
@@ -15,19 +15,26 @@ export const createCategory = asyncWrapper(async (req, res) => {
 });
 
 export const getCategories = asyncWrapper(async (req, res) => {
-  const { companyId } = req.params;
+  const companyIdFromToken = req.companyId; 
+  const companyIdFromParams = req.params.companyId;
+  console.log(companyIdFromToken);
+  console.log(companyIdFromParams);
+
+  // Validación estricta: El usuario solo puede ver SU empresa
+  if (companyIdFromParams !== companyIdFromToken) {
+      throw new Error('No tienes permiso para acceder a los datos de esta empresa'); 
+  }
+
   const { page, limit, search } = req.query;
 
-  const result = await categoriesService.getCategories(companyId, {
+  // Usamos companyIdFromToken para garantizar seguridad
+  const result = await categoriesService.getCategories(companyIdFromToken, {
     page: page ? parseInt(page) : 1,
     limit: limit ? parseInt(limit) : 10,
     search,
   });
 
-  res.json({
-    success: true,
-    ...result,
-  });
+  res.json({ success: true, ...result });
 });
 
 export const getCategoryById = asyncWrapper(async (req, res) => {

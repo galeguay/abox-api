@@ -19,6 +19,11 @@ export const register = asyncWrapper(async (req, res) => {
     res.status(201).json({ ok: true, data: result });
 });
 
+export const me = asyncWrapper(async (req, res) => {
+    const data = await authService.getMe(req.user.id, req.companyId); 
+    res.json({ ok: true, data });
+});
+
 export const refreshToken = asyncWrapper(async (req, res) => {
     const { refreshToken } = req.body;
     const result = await authService.refresh(refreshToken);

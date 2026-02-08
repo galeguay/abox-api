@@ -1,4 +1,4 @@
-import * as platformCompaniesService from './platform.companies.service.js';
+import * as platformCompaniesService from './platform-companies.service.js';
 import asyncWrapper from '../../middlewares/asyncWrapper.js';
 
 export const createCompany = asyncWrapper(async (req, res) => {
@@ -7,15 +7,17 @@ export const createCompany = asyncWrapper(async (req, res) => {
 });
 
 export const getCompanies = asyncWrapper(async (req, res) => {
-  const { page = 1, limit = 10, active } = req.query;
+  const { page = 1, limit = 10, active, search } = req.query;
+
   const result = await platformCompaniesService.getCompanies(
     parseInt(page),
     parseInt(limit),
-    active
+    active,
+    search // <--- ¡Importante!
   );
+
   res.json({ ok: true, data: result });
 });
-
 export const getCompany = asyncWrapper(async (req, res) => {
   const { id } = req.params;
   const result = await platformCompaniesService.getCompanyById(id);

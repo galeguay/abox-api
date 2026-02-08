@@ -23,18 +23,44 @@ router.use(authMiddleware('PLATFORM'));
 router.use(requireRole('ADMIN'));
 
 // GET /platform/admin - Listar todos los admins
-router.get('/', listAdminsValidator, validateFields, auditMiddleware('READ', 'ADMIN'), getAdmins);
+router.get(
+    '/', 
+    listAdminsValidator, 
+    validateFields, 
+    //auditMiddleware('READ', 'ADMIN'), 
+    getAdmins
+);
 
 // POST /platform/admin - Crear un nuevo admin
-router.post('/', createAdminValidator, validateFields, auditMiddleware('CREATE', 'ADMIN', (req, data) => data.data?.id), createAdmin);
+router.post(
+    '/', 
+    createAdminValidator, 
+    validateFields, 
+    //auditMiddleware('CREATE', 'ADMIN', (req, data) => data.data?.id),
+    createAdmin
+);
 
 // GET /platform/admin/:id - Obtener un admin específico
-router.get('/:id', auditMiddleware('READ', 'ADMIN'), getAdmin);
+router.get(
+    '/:id', 
+    //auditMiddleware('READ', 'ADMIN'), 
+    getAdmin
+);
 
 // PUT /platform/admin/:id - Actualizar un admin
-router.put('/:id', updateAdminValidator, validateFields, auditMiddleware('UPDATE', 'ADMIN'), updateAdmin);
+router.put(
+    '/:id', 
+    updateAdminValidator, 
+    validateFields, 
+    //auditMiddleware('UPDATE', 'ADMIN'), 
+    updateAdmin
+);
 
 // DELETE /platform/admin/:id - Eliminar un admin
-router.delete('/:id', auditMiddleware('DELETE', 'ADMIN'), deleteAdmin);
+router.delete(
+    '/:id', 
+    //auditMiddleware('DELETE', 'ADMIN'),
+    deleteAdmin
+);
 
 export default router;

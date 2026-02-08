@@ -35,6 +35,20 @@ CREATE TYPE "Role" AS ENUM ('OWNER', 'ADMIN', 'EMPLOYEE', 'READ_ONLY', 'MANAGER'
 CREATE TYPE "SaleStatus" AS ENUM ('COMPLETED', 'CANCELED');
 
 -- CreateTable
+CREATE TABLE "Plan" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "price" DECIMAL(65,30) NOT NULL DEFAULT 0,
+    "currency" TEXT NOT NULL DEFAULT 'USD',
+    "limits" JSONB DEFAULT '{}',
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Plan_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Company" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -43,6 +57,7 @@ CREATE TABLE "Company" (
     "phone" TEXT,
     "address" TEXT,
     "logoUrl" TEXT,
+    "planId" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT true,
     "config" JSONB DEFAULT '{}',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -53,6 +68,10 @@ CREATE TABLE "Company" (
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
+    "firstName" TEXT NOT NULL,
+    "lastName" TEXT NOT NULL,
+    "alias" TEXT,
+    "phone" TEXT,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
     "active" BOOLEAN NOT NULL DEFAULT true,
@@ -608,7 +627,16 @@ CREATE TABLE "SaleCategory" (
 );
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Plan_name_key" ON "Plan"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Plan_code_key" ON "Plan"("code");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Company_taxId_key" ON "Company"("taxId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "User_phone_key" ON "User"("phone");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
@@ -834,6 +862,9 @@ CREATE INDEX "SaleCategory_companyId_active_idx" ON "SaleCategory"("companyId", 
 
 -- CreateIndex
 CREATE UNIQUE INDEX "SaleCategory_companyId_name_key" ON "SaleCategory"("companyId", "name");
+
+-- AddForeignKey
+ALTER TABLE "Company" ADD CONSTRAINT "Company_planId_fkey" FOREIGN KEY ("planId") REFERENCES "Plan"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "UserCompany" ADD CONSTRAINT "UserCompany_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
